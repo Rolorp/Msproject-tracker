@@ -17,6 +17,63 @@
   <main>
     <div class="intro"><p class="eyebrow">TU TIEMPO EN MAPLE</p><h1>Cada sesión cuenta.</h1><p>Registra tu progreso y encuentra tu ritmo.</p></div>
     <p id="message" class="message" role="status" hidden></p>
+    <section class="profiles" aria-label="Perfiles de personaje">
+      <details id="profiles-panel">
+        <summary>Perfiles de personaje <span id="profile-count"></span></summary>
+        <p class="form-hint">Registra el estado de tu personaje para asociarlo a tus sesiones. Los datos son manuales y la validación de reglas de SP está pendiente.</p>
+        <div id="profile-list" class="profile-list"></div>
+        <form id="profile-form">
+          <h2 id="profile-form-title">Nuevo personaje</h2>
+          <div class="fields profile-fields">
+            <label>Nombre del personaje<input name="name" maxlength="60" required autocomplete="off"></label>
+            <label>Clase o rama<input name="job" maxlength="100" required placeholder="Nombre de tu clase en el juego"></label>
+            <label>Nivel del personaje<input name="level" type="number" min="1" step="1" required inputmode="numeric"></label>
+            <label>Región<input name="region" maxlength="80" value="Global" required></label>
+            <label>Mundo<input name="world" maxlength="80"></label>
+            <label>Entorno<select name="environment"><option value="live">Live</option><option value="test">Test</option></select></label>
+            <label>Parche observado<input name="patch" maxlength="80" placeholder="Opcional"></label>
+          </div>
+          <details class="profile-section"><summary>AP y valores de combate</summary>
+            <p class="form-hint">Introduce los atributos base y los valores totales de combate mostrados en el juego. Deja vacíos los valores desconocidos.</p>
+            <div class="profile-fields">
+              <label>STR base<input name="str" type="number" min="0" step="1" inputmode="numeric"></label>
+              <label>DEX base<input name="dex" type="number" min="0" step="1" inputmode="numeric"></label>
+              <label>INT base<input name="int" type="number" min="0" step="1" inputmode="numeric"></label>
+              <label>LUK base<input name="luk" type="number" min="0" step="1" inputmode="numeric"></label>
+              <label>HP máximo<input name="maxHp" type="number" min="0" step="1" inputmode="numeric"></label>
+              <label>MP máximo<input name="maxMp" type="number" min="0" step="1" inputmode="numeric"></label>
+              <label>Weapon Attack total<input name="weaponAttack" type="number" min="0" step="1" inputmode="numeric"></label>
+              <label>Magic Attack total<input name="magicAttack" type="number" min="0" step="1" inputmode="numeric"></label>
+              <label>Accuracy total<input name="accuracy" type="number" min="0" step="1" inputmode="numeric"></label>
+              <label>Avoidability total<input name="avoidability" type="number" min="0" step="1" inputmode="numeric"></label>
+            </div>
+          </details>
+          <details class="profile-section"><summary>Equipo</summary>
+            <label>Objetos y atributos relevantes<textarea name="equipment" rows="4" maxlength="4000" placeholder="Arma, velocidad, equipo y bonificaciones que quieras registrar"></textarea></label>
+          </details>
+          <details class="profile-section"><summary>SP libres por avance</summary>
+            <p class="form-hint">Registra cada avance por separado. Un campo de puntos vacío significa desconocido.</p>
+            <div id="sp-pools"></div><button id="add-sp-pool" type="button" class="secondary">Añadir avance</button>
+          </details>
+          <details class="profile-section"><summary>Habilidades actuales</summary>
+            <p class="form-hint">Introduce el nombre de la habilidad, el rango que tienes asignado y su avance si lo conoces.</p>
+            <div id="profile-skills"></div><button id="add-skill" type="button" class="secondary">Añadir habilidad</button>
+          </details>
+          <div class="profile-actions"><button id="save-profile" type="submit">Guardar personaje</button><button id="new-profile" type="button" class="secondary">Nuevo personaje</button></div>
+        </form>
+      </details>
+    </section>
+    <template id="sp-pool-template"><div class="profile-row">
+      <label>Avance<input name="poolName" maxlength="80" required></label>
+      <label>SP libres<input name="poolAvailable" type="number" min="0" step="1" inputmode="numeric"></label>
+      <button type="button" class="text-button remove-row" aria-label="Quitar avance del formulario">Quitar</button>
+    </div></template>
+    <template id="skill-template"><div class="profile-row">
+      <label>Habilidad<input name="skillName" maxlength="100" required></label>
+      <label>Rango<input name="skillRank" type="number" min="0" step="1" required inputmode="numeric"></label>
+      <label>Avance<input name="skillPool" maxlength="80"></label>
+      <button type="button" class="text-button remove-row" aria-label="Quitar habilidad del formulario">Quitar</button>
+    </div></template>
     <section class="workspace" aria-label="Registro de sesión">
       <div class="timer-panel">
         <div class="panel-top"><h2>Tu sesión</h2><span id="status">Lista para empezar</span></div>
@@ -32,6 +89,7 @@
         <form id="start-form">
           <h2>Antes de empezar</h2>
           <div class="fields">
+            <label>Perfil guardado<select id="session-profile"><option value="">Registro manual</option></select></label>
             <label>Personaje <span>opcional</span><input name="character" maxlength="60" placeholder="Nombre del personaje" autocomplete="off"></label>
             <label>Mapa <span>opcional</span><input name="map" maxlength="100" placeholder="Dónde vas a entrenar" autocomplete="off"></label>
             <div class="field-row"><label>Nivel<input name="level" type="number" min="1" step="1" required inputmode="numeric"></label><label>EXP actual<input name="exp" type="number" min="0" step="1" required inputmode="numeric"></label></div>
@@ -64,6 +122,7 @@
       <div class="metrics">
         <article><h3>EXP ganada</h3><p id="result-exp"></p></article><article><h3>EXP / hora</h3><p id="result-exp-rate"></p></article><article><h3>Mesos netos</h3><p id="result-mesos"></p></article><article><h3>Mesos / hora</h3><p id="result-mesos-rate"></p></article>
       </div><p id="result-duration" class="form-hint"></p>
+      <details id="result-profile" hidden><summary>Perfil usado en esta sesión</summary><dl id="result-profile-values"></dl></details>
     </section>
     <section class="history" aria-labelledby="history-heading">
       <div class="section-heading"><div><h2 id="history-heading">Historial</h2><p id="history-count">Tus sesiones aparecerán aquí.</p></div><button id="export" type="button" class="secondary" disabled>Exportar CSV</button></div>
@@ -71,6 +130,6 @@
       <div class="table-scroll" id="history-table" hidden><table><thead><tr><th>Fecha / personaje</th><th>Mapa</th><th>Tiempo activo</th><th>EXP / hora</th><th>Mesos / hora</th><th><span class="sr-only">Detalle</span></th></tr></thead><tbody id="history-body"></tbody></table></div>
     </section>
   </main>
-  <footer>MSproject tracker <span>v0.1 · Proyecto de fans independiente</span></footer>
+  <footer>MSproject tracker <span>v0.2 · Proyecto de fans independiente</span></footer>
 </body>
 </html>

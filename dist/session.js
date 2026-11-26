@@ -7,18 +7,25 @@ export function integer(value, label, minimum = 0) {
   return number;
 }
 
-export function createSession(data, now, id) {
+export function createSession(data, now, id, profile = null) {
+  const level = integer(data.level, 'el nivel inicial', 1);
+  const character = String(data.character || '').trim();
+  if (profile && (profile.level !== level || profile.name !== character)) {
+    throw new Error('Actualiza el nombre y nivel del perfil antes de iniciar la sesión.');
+  }
   return {
     id,
-    character: String(data.character || '').trim(),
+    character,
     map: String(data.map || '').trim(),
-    initialLevel: integer(data.level, 'el nivel inicial', 1),
+    initialLevel: level,
     initialExp: integer(data.exp, 'la EXP inicial'),
     initialMesos: integer(data.mesos, 'los mesos iniciales'),
     startedAt: now,
     resumedAt: now,
     activeMs: 0,
-    status: 'running'
+    status: 'running',
+    profileId: profile?.id ?? null,
+    characterSnapshot: profile ? JSON.parse(JSON.stringify(profile)) : null
   };
 }
 

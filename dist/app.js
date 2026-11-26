@@ -1,13 +1,18 @@
 import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSession, finishSession } from './session.js';
+import { saveProfile } from './profile.js';
+import { emptyState, restoreState } from './state.js';
 
 const STORAGE_KEY = 'msproject-tracker.v1';
 const $ = id => document.getElementById(id);
 const numberFormat = new Intl.NumberFormat('es', { maximumFractionDigits: 0 });
 const dateFormat = new Intl.DateTimeFormat('es', { dateStyle: 'short', timeStyle: 'short' });
-let state = { version: 1, revision: 0, current: null, history: [] };
+let state = emptyState();
 let storageAvailable = true;
 let selectedResultId = null;
 let initializedFinishId = null;
+let editingProfileId = null;
+let editingProfileRevision = null;
+let savingProfile = false;
 
 function message(text) {
   $('message').textContent = text;
@@ -15,13 +20,7 @@ function message(text) {
 }
 
 function readState() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return { version: 1, revision: 0, current: null, history: [] };
-  const saved = JSON.parse(raw);
-  if (saved.version !== 1 || !Number.isSafeInteger(saved.revision) || !Array.isArray(saved.history)) {
-    throw new Error('El formato de los datos guardados no es compatible.');
-  }
-  return saved;
+  return restoreState(localStorage.getItem(STORAGE_KEY));
 }
 
 try {
@@ -35,7 +34,7 @@ try {
 }
 
 async function updateState(change) {
-  if (!storageAvailable) return;
+  if (!storageAvailable) return false;
   const update = () => {
     const saved = readState();
     if (saved.revision !== state.revision) {
@@ -49,12 +48,116 @@ async function updateState(change) {
     state = next;
     message('');
     render();
+    return true;
   };
   try {
-    if (navigator.locks) await navigator.locks.request(STORAGE_KEY, update);
-    else update();
+    if (navigator.locks) return await navigator.locks.request(STORAGE_KEY, update);
+    return update();
   } catch (error) {
     message(`No se guardó el cambio. ${error.message}`);
+    return false;
+  }
+}
+
+function appendProfileRow(templateId, containerId, values = {}) {
+  const row = $(templateId).content.firstElementChild.cloneNode(true);
+  for (const input of row.querySelectorAll('input')) input.value = values[input.name] ?? '';
+  row.querySelector('.remove-row').addEventListener('click', () => row.remove());
+  $(containerId).append(row);
+}
+
+function editProfile(profile = null) {
+  const form = $('profile-form');
+  form.reset();
+  editingProfileId = profile?.id ?? null;
+  editingProfileRevision = profile?.revision ?? null;
+  $('profile-form-title').textContent = profile ? `Editar ${profile.name}` : 'Nuevo personaje';
+  $('sp-pools').replaceChildren();
+  $('profile-skills').replaceChildren();
+  if (profile) {
+    const fields = { ...profile, ...profile.attributes, ...profile.combat };
+    for (const control of form.elements) {
+      if (control.name) control.value = fields[control.name] ?? '';
+    }
+    for (const pool of profile.spPools) {
+      appendProfileRow('sp-pool-template', 'sp-pools', { poolName: pool.name, poolAvailable: pool.available });
+    }
+    for (const skill of profile.skills) {
+      appendProfileRow('skill-template', 'profile-skills', { skillName: skill.name, skillRank: skill.rank, skillPool: skill.pool });
+    }
+  }
+  $('profiles-panel').open = true;
+  form.elements.name.focus();
+}
+
+function applySelectedProfile() {
+  const profile = state.profiles.find(item => item.id === $('session-profile').value);
+  const form = $('start-form');
+  form.elements.character.readOnly = !!profile;
+  form.elements.level.readOnly = !!profile;
+  if (profile) {
+    form.elements.character.value = profile.name;
+    form.elements.level.value = profile.level;
+  }
+}
+
+function renderProfiles() {
+  const selector = $('session-profile');
+  const selected = selector.value;
+  const manual = document.createElement('option');
+  manual.value = '';
+  manual.textContent = 'Registro manual';
+  selector.replaceChildren(manual);
+  const list = $('profile-list');
+  list.replaceChildren();
+  $('profile-count').textContent = state.profiles.length ? `(${state.profiles.length})` : '';
+  $('save-profile').disabled = !storageAvailable || savingProfile;
+  for (const profile of state.profiles) {
+    const option = document.createElement('option');
+    option.value = profile.id;
+    option.textContent = `${profile.name} · ${profile.job} · Nv. ${profile.level}`;
+    selector.append(option);
+    const item = document.createElement('div');
+    item.className = 'profile-item';
+    const summary = document.createElement('p');
+    summary.textContent = `${profile.name} · ${profile.job} · Nv. ${profile.level} · ${profile.environment}`;
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'secondary';
+    edit.textContent = 'Editar';
+    edit.setAttribute('aria-label', `Editar ${profile.name}`);
+    edit.addEventListener('click', () => editProfile(profile));
+    item.append(summary, edit);
+    list.append(item);
+  }
+  selector.value = selected;
+  applySelectedProfile();
+}
+
+function renderProfileSnapshot(profile) {
+  $('result-profile').hidden = !profile;
+  const list = $('result-profile-values');
+  list.replaceChildren();
+  if (!profile) return;
+  const known = value => value === null ? 'desconocido' : numberFormat.format(value);
+  const fields = [
+    ['Personaje', `${profile.name} · ${profile.job} · Nv. ${profile.level}`],
+    ['Contexto', [profile.region, profile.world, profile.environment, profile.patch || 'Parche sin registrar'].filter(Boolean).join(' · ')],
+    ['AP base', Object.entries(profile.attributes).map(([attribute, value]) => `${attribute.toUpperCase()} ${known(value)}`).join(' · ')],
+    ['HP / MP máximos', `${known(profile.combat.maxHp)} / ${known(profile.combat.maxMp)}`],
+    ['Weapon Attack / Magic Attack', `${known(profile.combat.weaponAttack)} / ${known(profile.combat.magicAttack)}`],
+    ['Accuracy / Avoidability', `${known(profile.combat.accuracy)} / ${known(profile.combat.avoidability)}`],
+    ['Equipo', profile.equipment || 'Sin registrar'],
+    ['SP libres por avance', profile.spPools.map(pool => `${pool.name} ${known(pool.available)}`).join(' · ') || 'Sin registrar'],
+    ['Habilidades', profile.skills.map(skill => `${skill.name} ${skill.rank}${skill.pool ? ` (${skill.pool})` : ''}`).join(' · ') || 'Sin registrar'],
+    ['Procedencia', 'Registro manual. Validación de reglas pendiente.']
+  ];
+  for (const [label, value] of fields) {
+    const term = document.createElement('dt');
+    term.textContent = label;
+    const description = document.createElement('dd');
+    description.textContent = value;
+    list.append(term, description);
   }
 }
 
@@ -122,6 +225,7 @@ function renderResults() {
   $('result-mesos').textContent = numberFormat.format(result.netMesos);
   $('result-mesos-rate').textContent = numberFormat.format(elapsed ? result.elapsedMesosPerHour : result.mesosPerHour);
   $('result-duration').textContent = `${dateFormat.format(result.startedAt)} · Tiempo activo ${formatDuration(result.activeMs)} · Tiempo total ${formatDuration(result.elapsedMs)}`;
+  renderProfileSnapshot(result.characterSnapshot);
 }
 
 function renderHistory() {
@@ -140,6 +244,7 @@ function renderHistory() {
     }
     const character = document.createElement('small');
     character.textContent = session.character || 'Sin personaje';
+    if (session.characterSnapshot) character.textContent += ` · ${session.characterSnapshot.job}`;
     row.cells[0].append(character);
     const actionCell = document.createElement('td');
     const action = document.createElement('button');
@@ -182,6 +287,7 @@ function render() {
     initializedFinishId = session.id;
   }
   if (!session) initializedFinishId = null;
+  renderProfiles();
   updateClock();
   renderHistory();
   renderResults();
@@ -192,8 +298,44 @@ $('start-form').addEventListener('submit', event => {
   const data = Object.fromEntries(new FormData(event.target));
   updateState(current => {
     if (current.current) throw new Error('Ya tienes una sesión abierta.');
-    return { ...current, current: createSession(data, Date.now(), crypto.randomUUID()) };
+    const profile = current.profiles.find(item => item.id === $('session-profile').value) || null;
+    return { ...current, current: createSession(data, Date.now(), crypto.randomUUID(), profile) };
   });
+});
+
+$('session-profile').addEventListener('change', applySelectedProfile);
+$('new-profile').addEventListener('click', () => editProfile());
+$('add-sp-pool').addEventListener('click', () => appendProfileRow('sp-pool-template', 'sp-pools'));
+$('add-skill').addEventListener('click', () => appendProfileRow('skill-template', 'profile-skills'));
+$('profile-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (savingProfile) return;
+  const data = Object.fromEntries(new FormData(event.target));
+  data.spPools = [...$('sp-pools').children].map(row => ({
+    name: row.querySelector('[name="poolName"]').value,
+    available: row.querySelector('[name="poolAvailable"]').value
+  }));
+  data.skills = [...$('profile-skills').children].map(row => ({
+    name: row.querySelector('[name="skillName"]').value,
+    rank: row.querySelector('[name="skillRank"]').value,
+    pool: row.querySelector('[name="skillPool"]').value
+  }));
+  const id = editingProfileId || crypto.randomUUID();
+  const expectedRevision = editingProfileRevision;
+  savingProfile = true;
+  $('save-profile').disabled = true;
+  const saved = await updateState(current => ({
+    ...current,
+    profiles: saveProfile(current.profiles, data, id, Date.now(), expectedRevision)
+  }));
+  savingProfile = false;
+  $('save-profile').disabled = !storageAvailable;
+  if (saved) {
+    editProfile(state.profiles.find(profile => profile.id === id));
+    $('session-profile').value = id;
+    applySelectedProfile();
+    message('Personaje guardado. Puedes seleccionarlo al iniciar una sesión.');
+  }
 });
 
 $('pause').addEventListener('click', () => updateState(current => ({
@@ -228,14 +370,15 @@ function csvText(value) {
 }
 
 $('export').addEventListener('click', () => {
-  const headers = ['id', 'inicio', 'fin', 'personaje', 'mapa', 'nivel_inicial', 'nivel_final', 'exp_inicial', 'exp_final', 'exp_requerida_por_nivel_manual', 'mesos_iniciales', 'mesos_finales', 'depositos_externos', 'retiros_externos', 'coste_consumibles_inventario', 'segundos_activos', 'segundos_totales', 'exp_ganada', 'mesos_netos', 'exp_h_activa', 'mesos_h_activa', 'exp_h_total', 'mesos_h_total'];
+  const headers = ['id', 'inicio', 'fin', 'personaje', 'mapa', 'nivel_inicial', 'nivel_final', 'exp_inicial', 'exp_final', 'exp_requerida_por_nivel_manual', 'mesos_iniciales', 'mesos_finales', 'depositos_externos', 'retiros_externos', 'coste_consumibles_inventario', 'segundos_activos', 'segundos_totales', 'exp_ganada', 'mesos_netos', 'exp_h_activa', 'mesos_h_activa', 'exp_h_total', 'mesos_h_total', 'perfil_id', 'perfil_al_inicio_json'];
   const rows = state.history.map(session => [
     csvText(session.id), csvText(new Date(session.startedAt).toISOString()), csvText(new Date(session.endedAt).toISOString()),
     csvText(session.character), csvText(session.map), session.initialLevel, session.finalLevel,
     session.initialExp, session.finalExp, csvText(JSON.stringify(session.expRequirements)),
     session.initialMesos, session.finalMesos, session.externalDeposits, session.externalWithdrawals, session.inventoryCost,
     session.activeMs / 1000, session.elapsedMs / 1000, session.expGained, session.netMesos,
-    session.expPerHour, session.mesosPerHour, session.elapsedExpPerHour, session.elapsedMesosPerHour
+    session.expPerHour, session.mesosPerHour, session.elapsedExpPerHour, session.elapsedMesosPerHour,
+    csvText(session.profileId), csvText(JSON.stringify(session.characterSnapshot ?? null))
   ].join(','));
   const blob = new Blob(['\uFEFF', headers.join(','), '\r\n', rows.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);

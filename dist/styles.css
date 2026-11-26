@@ -17,7 +17,7 @@ body {
   margin:0;
 }
 
-button,input,select {
+button,input,select,textarea {
   font:inherit;
 }
 
@@ -229,7 +229,7 @@ label span {
   font-size:.8rem;
 }
 
-input,select {
+input,select,textarea {
   background:#0e1c16;
   color:#eef4ef;
   border:1px solid #3c5143;
@@ -239,12 +239,12 @@ input,select {
   width:100%;
 }
 
-input:focus,select:focus {
+input:focus,select:focus,textarea:focus {
   outline:2px solid var(--accent);
   outline-offset:1px;
 }
 
-input::placeholder {
+input::placeholder,textarea::placeholder {
   color:#7e9687;
 }
 
@@ -442,7 +442,82 @@ footer {
   border:0;
 }
 
+.profiles {
+  margin-bottom: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #12221b;
+}
+
+.profiles > details > summary {
+  font-size: 1rem;
+}
+
+.profile-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.profile-list {
+  display: grid;
+  gap: .75rem;
+  margin-bottom: 1.5rem;
+}
+
+.profile-item, .profile-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.profile-item {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: .75rem;
+}
+
+.profile-item p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.profile-section {
+  padding: 1rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.profile-row {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: .75rem;
+  padding: .75rem 0;
+}
+
+.profile-row label {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+textarea {
+  resize: vertical;
+}
+
+#result-profile-values dd {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 @media(max-width:760px) {
+  .profile-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .profile-actions {
+    flex-wrap: wrap;
+  }
   main {
     padding:2rem 1.1rem;
   }
