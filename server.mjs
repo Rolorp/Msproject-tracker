@@ -3,11 +3,11 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, sep, extname } from 'node:path';
 
-const root = fileURLToPath(new URL('./dist/', import.meta.url));
-const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+const root = resolve(fileURLToPath(new URL('./dist/', import.meta.url)));
+const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.wasm': 'application/wasm' };
 const port = Number(process.env.PORT || 3000);
 
-createServer(async (request, response) => {
+export const server = createServer(async (request, response) => {
   try {
     const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
     const path = resolve(root, `.${pathname === '/' ? '/index.html' : pathname}`);
@@ -21,4 +21,8 @@ createServer(async (request, response) => {
   } catch {
     response.writeHead(404).end('Archivo no encontrado');
   }
-}).listen(port, '0.0.0.0', () => console.log(`MSproject tracker en http://localhost:${port}`));
+});
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  server.listen(port, '0.0.0.0', () => console.log(`MSproject tracker en http://localhost:${port}`));
+}

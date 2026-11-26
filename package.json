@@ -1,14 +1,23 @@
 {
   "name": "msproject-tracker",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Registro de sesiones de MapleStory Classic World",
   "scripts": {
+    "build": "node scripts/prepare-ocr.mjs",
+    "predev": "npm run build",
     "dev": "node server.mjs",
+    "prestart": "npm run build",
     "start": "node server.mjs",
     "test": "node --test",
-    "check": "node --check dist/app.js && node --check dist/session.js && node --check dist/profile.js && node --check dist/state.js && node --check server.mjs"
+    "check": "node --check dist/app.js && node --check dist/session.js && node --check dist/profile.js && node --check dist/state.js && node --check dist/ocr.js && node --check dist/ocr-parser.js && node --check scripts/prepare-ocr.mjs && node --check server.mjs"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@tesseract.js-data/eng": "1.0.0",
+    "tesseract.js": "7.0.0"
+  }
 }

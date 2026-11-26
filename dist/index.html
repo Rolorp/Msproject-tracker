@@ -24,6 +24,7 @@
         <div id="profile-list" class="profile-list"></div>
         <form id="profile-form">
           <h2 id="profile-form-title">Nuevo personaje</h2>
+          <button class="secondary image-import" type="button" data-ocr-form="profile-form">Leer valores de una imagen</button>
           <div class="fields profile-fields">
             <label>Nombre del personaje<input name="name" maxlength="60" required autocomplete="off"></label>
             <label>Clase o rama<input name="job" maxlength="100" required placeholder="Nombre de tu clase en el juego"></label>
@@ -88,6 +89,7 @@
       <div class="form-panel">
         <form id="start-form">
           <h2>Antes de empezar</h2>
+          <button class="secondary image-import" type="button" data-ocr-form="start-form">Leer valores de una imagen</button>
           <div class="fields">
             <label>Perfil guardado<select id="session-profile"><option value="">Registro manual</option></select></label>
             <label>Personaje <span>opcional</span><input name="character" maxlength="60" placeholder="Nombre del personaje" autocomplete="off"></label>
@@ -100,6 +102,7 @@
         <div id="running-info" hidden><h2 id="running-heading">Sesión en curso</h2><p>Puedes volver al juego. Al finalizar, introduce tus valores finales para calcular el rendimiento.</p><dl id="initial-values"></dl></div>
         <form id="finish-form" hidden>
           <h2>Al terminar</h2>
+          <button class="secondary image-import" type="button" data-ocr-form="finish-form">Leer valores de una imagen</button>
           <p class="form-hint">El cronómetro ya está detenido.</p>
           <div class="fields">
             <div class="field-row"><label>Nivel final<input name="level" type="number" min="1" step="1" required inputmode="numeric"></label><label>EXP final<input name="exp" type="number" min="0" step="1" required inputmode="numeric"></label></div>
@@ -130,6 +133,16 @@
       <div class="table-scroll" id="history-table" hidden><table><thead><tr><th>Fecha / personaje</th><th>Mapa</th><th>Tiempo activo</th><th>EXP / hora</th><th>Mesos / hora</th><th><span class="sr-only">Detalle</span></th></tr></thead><tbody id="history-body"></tbody></table></div>
     </section>
   </main>
-  <footer>MSproject tracker <span>v0.2 · Proyecto de fans independiente</span></footer>
+  <dialog id="ocr-dialog" aria-labelledby="ocr-heading">
+    <div class="section-heading"><h2 id="ocr-heading">Leer valores de una imagen</h2><button id="ocr-close" type="button" class="secondary">Cerrar</button></div>
+    <p class="form-hint">La lectura se realiza en este navegador. Revisa los números antes de aplicarlos. Una captura recortada y nítida facilita la lectura.</p>
+    <label>Captura o foto (PNG, JPG o WebP, hasta 15 MB)<input id="ocr-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+    <img id="ocr-preview" alt="Imagen seleccionada para leer valores" hidden>
+    <button id="ocr-read" class="image-import" type="button">Leer imagen</button>
+    <p id="ocr-status" role="status" class="form-hint"></p>
+    <details><summary>Revisar el texto leído</summary><label>Texto detectado<textarea id="ocr-text" rows="6" spellcheck="false"></textarea></label><button id="ocr-extract" class="secondary image-import" type="button">Extraer valores del texto</button></details>
+    <form id="ocr-review"><div id="ocr-candidates"></div><button id="ocr-apply" type="submit" disabled>Aplicar valores revisados</button></form>
+  </dialog>
+  <footer>MSproject tracker <span>v0.3 · Proyecto de fans independiente</span></footer>
 </body>
 </html>

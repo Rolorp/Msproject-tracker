@@ -1,6 +1,7 @@
 import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSession, finishSession } from './session.js';
 import { saveProfile } from './profile.js';
 import { emptyState, restoreState } from './state.js';
+import { setupImageImport } from './ocr.js';
 
 const STORAGE_KEY = 'msproject-tracker.v1';
 const $ = id => document.getElementById(id);
@@ -266,7 +267,7 @@ function render() {
   const session = state.current;
   const isFinishing = session?.status === 'finishing';
   $('start-form').hidden = !!session;
-  $('start-form').querySelector('button').disabled = !storageAvailable;
+  $('start-form').querySelector('button[type="submit"]').disabled = !storageAvailable;
   $('running-info').hidden = !session || isFinishing;
   $('finish-form').hidden = !isFinishing;
   $('timer-controls').hidden = !session || isFinishing;
@@ -401,5 +402,6 @@ window.addEventListener('storage', event => {
   }
 });
 
+setupImageImport();
 render();
 setInterval(updateClock, 250);
