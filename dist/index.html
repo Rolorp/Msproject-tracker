@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10241f">
+  <meta name="description" content="Mide la EXP y los mesos por hora de tus sesiones de MapleStory Classic World.">
+  <title>MSproject tracker</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./">MSproject <span>tracker</span></a>
+    <span class="game">MapleStory Classic World</span>
+  </header>
+  <main>
+    <div class="intro"><p class="eyebrow">TU TIEMPO EN MAPLE</p><h1>Cada sesión cuenta.</h1><p>Registra tu progreso y encuentra tu ritmo.</p></div>
+    <p id="message" class="message" role="status" hidden></p>
+    <section class="workspace" aria-label="Registro de sesión">
+      <div class="timer-panel">
+        <div class="panel-top"><h2>Tu sesión</h2><span id="status">Lista para empezar</span></div>
+        <div class="clock-area"><p id="timer" class="clock" aria-label="Tiempo activo">00:00:00</p><p id="timer-description">Tiempo activo</p></div>
+        <div id="timer-controls" class="controls" hidden>
+          <button id="pause" type="button" class="secondary">Pausar</button>
+          <button id="stop" type="button">Finalizar</button>
+        </div>
+        <p id="session-context" class="context">Introduce tus valores actuales y pulsa Iniciar.</p>
+        <p class="storage-note">La sesión se conserva al recargar. Datos guardados en este navegador.</p>
+      </div>
+      <div class="form-panel">
+        <form id="start-form">
+          <h2>Antes de empezar</h2>
+          <div class="fields">
+            <label>Personaje <span>opcional</span><input name="character" maxlength="60" placeholder="Nombre del personaje" autocomplete="off"></label>
+            <label>Mapa <span>opcional</span><input name="map" maxlength="100" placeholder="Dónde vas a entrenar" autocomplete="off"></label>
+            <div class="field-row"><label>Nivel<input name="level" type="number" min="1" step="1" required inputmode="numeric"></label><label>EXP actual<input name="exp" type="number" min="0" step="1" required inputmode="numeric"></label></div>
+            <label>Mesos actuales<input name="mesos" type="number" min="0" step="1" required inputmode="numeric"></label>
+          </div>
+          <button class="full" type="submit">Iniciar sesión</button>
+        </form>
+        <div id="running-info" hidden><h2 id="running-heading">Sesión en curso</h2><p>Puedes volver al juego. Al finalizar, introduce tus valores finales para calcular el rendimiento.</p><dl id="initial-values"></dl></div>
+        <form id="finish-form" hidden>
+          <h2>Al terminar</h2>
+          <p class="form-hint">El cronómetro ya está detenido.</p>
+          <div class="fields">
+            <div class="field-row"><label>Nivel final<input name="level" type="number" min="1" step="1" required inputmode="numeric"></label><label>EXP final<input name="exp" type="number" min="0" step="1" required inputmode="numeric"></label></div>
+            <div id="level-requirements"></div>
+            <label>Mesos finales<input name="mesos" type="number" min="0" step="1" required inputmode="numeric"></label>
+            <details><summary>Ajustar movimientos y consumibles</summary>
+              <p class="form-hint">Las compras pagadas durante la sesión ya están reflejadas en tu saldo. Introduce aquí el valor de consumibles que tenías antes y utilizaste durante la sesión.</p>
+              <label>Coste de consumibles del inventario<input name="inventoryCost" type="number" min="0" step="1" value="0" inputmode="numeric"></label>
+              <label>Mesos recibidos de banco u otros personajes<input name="deposits" type="number" min="0" step="1" value="0" inputmode="numeric"></label>
+              <label>Mesos enviados a banco u otros personajes<input name="withdrawals" type="number" min="0" step="1" value="0" inputmode="numeric"></label>
+            </details>
+          </div>
+          <button class="full" type="submit">Calcular y guardar</button>
+          <button id="continue" class="text-button full" type="button">Volver a la sesión en pausa</button>
+        </form>
+      </div>
+    </section>
+    <section id="results" class="results" aria-label="Resultado de la sesión" hidden>
+      <div class="section-heading"><h2>Resultado de la sesión</h2><label class="time-basis">Calcular por<select id="time-basis"><option value="active">Tiempo activo</option><option value="elapsed">Tiempo total, con pausas</option></select></label></div>
+      <div class="metrics">
+        <article><h3>EXP ganada</h3><p id="result-exp"></p></article><article><h3>EXP / hora</h3><p id="result-exp-rate"></p></article><article><h3>Mesos netos</h3><p id="result-mesos"></p></article><article><h3>Mesos / hora</h3><p id="result-mesos-rate"></p></article>
+      </div><p id="result-duration" class="form-hint"></p>
+    </section>
+    <section class="history" aria-labelledby="history-heading">
+      <div class="section-heading"><div><h2 id="history-heading">Historial</h2><p id="history-count">Tus sesiones aparecerán aquí.</p></div><button id="export" type="button" class="secondary" disabled>Exportar CSV</button></div>
+      <p id="empty-history" class="empty">Tu próxima sesión es el punto de partida.</p>
+      <div class="table-scroll" id="history-table" hidden><table><thead><tr><th>Fecha / personaje</th><th>Mapa</th><th>Tiempo activo</th><th>EXP / hora</th><th>Mesos / hora</th><th><span class="sr-only">Detalle</span></th></tr></thead><tbody id="history-body"></tbody></table></div>
+    </section>
+  </main>
+  <footer>MSproject tracker <span>v0.1 · Proyecto de fans independiente</span></footer>
+</body>
+</html>

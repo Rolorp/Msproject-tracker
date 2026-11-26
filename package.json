@@ -1,0 +1,14 @@
+{
+  "name": "msproject-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Registro de sesiones de MapleStory Classic World",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "node server.mjs",
+    "test": "node --test",
+    "check": "node --check dist/app.js && node --check dist/session.js && node --check server.mjs"
+  },
+  "engines": { "node": ">=20" }
+}
