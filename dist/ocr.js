@@ -20,6 +20,8 @@ function initializeWorker(tesseract, options) {
 export function setupImageImport() {
   const dialog = document.getElementById('ocr-dialog');
   const fileInput = document.getElementById('ocr-file');
+  const cameraInput = document.getElementById('ocr-camera');
+  const cameraButton = document.getElementById('ocr-open-camera');
   const preview = document.getElementById('ocr-preview');
   const status = document.getElementById('ocr-status');
   const rawText = document.getElementById('ocr-text');
@@ -31,9 +33,12 @@ export function setupImageImport() {
   let imageUrl = null;
   let worker = null;
   let generation = 0;
+  let selectedFile = null;
 
   function setBusy(busy) {
     fileInput.disabled = busy;
+    cameraInput.disabled = busy;
+    cameraButton.disabled = busy;
     readButton.disabled = busy;
     extractButton.disabled = busy;
     applyButton.disabled = busy;
@@ -101,39 +106,53 @@ export function setupImageImport() {
     preview.removeAttribute('src');
     preview.hidden = true;
     fileInput.value = '';
+    cameraInput.value = '';
+    selectedFile = null;
     rawText.value = '';
     candidates.replaceChildren();
   });
 
-  fileInput.addEventListener('change', async () => {
-    const file = fileInput.files[0];
+  async function selectImage(event) {
+    const input = event.currentTarget;
+    const file = input.files[0];
+    // Cancelling either native picker preserves the image already under review.
+    if (!file) return;
+    selectedFile = file;
+    const otherInput = input === fileInput ? cameraInput : fileInput;
+    otherInput.value = '';
     candidates.replaceChildren();
     rawText.value = '';
     applyButton.disabled = true;
     if (imageUrl) URL.revokeObjectURL(imageUrl);
+    imageUrl = null;
     preview.hidden = true;
-    if (!file) return;
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 15 * 1024 * 1024) {
       status.textContent = 'Elige una imagen PNG, JPG o WebP de hasta 15 MB.';
-      fileInput.value = '';
+      input.value = '';
+      selectedFile = null;
       return;
     }
     imageUrl = URL.createObjectURL(file);
     preview.src = imageUrl;
     try {
       await preview.decode();
-      if (fileInput.files[0] !== file) return;
+      if (selectedFile !== file) return;
       preview.hidden = false;
       status.textContent = 'Imagen lista. Pulsa Leer imagen para extraer los valores.';
     } catch {
-      if (fileInput.files[0] !== file) return;
+      if (selectedFile !== file) return;
       status.textContent = 'No se pudo abrir esta imagen. Prueba otra captura.';
-      fileInput.value = '';
+      input.value = '';
+      selectedFile = null;
     }
-  });
+  }
+
+  fileInput.addEventListener('change', selectImage);
+  cameraInput.addEventListener('change', selectImage);
+  cameraButton.addEventListener('click', () => cameraInput.click());
 
   readButton.addEventListener('click', async () => {
-    const file = fileInput.files[0];
+    const file = selectedFile;
     if (!file) {
       status.textContent = 'Selecciona una imagen primero.';
       return;

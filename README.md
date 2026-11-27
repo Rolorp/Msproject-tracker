@@ -36,6 +36,8 @@ Las sesiones guardadas con v0.1 siguen disponibles, incluidas las que estaban en
 
 Pulsa **Leer valores de una imagen** en el perfil, al iniciar una sesión o al finalizarla. Elige una foto o captura PNG, JPG o WebP de hasta 15 MB, pulsa **Leer imagen**, marca los campos detectados que quieres utilizar, corrige sus números y pulsa **Aplicar valores revisados**. Después puedes guardar el perfil o continuar con el flujo de la sesión. La aplicación de valores rellena el formulario y el guardado se realiza con su botón correspondiente.
 
+Desde el celular también puedes pulsar **Tomar foto**. El control solicita la cámara trasera mediante la captura nativa del navegador y envía la foto al mismo flujo de previsualización, OCR y revisión. El navegador y el dispositivo determinan la disponibilidad de la cámara y pueden ofrecer un selector de archivos. Cancelar la cámara o el selector conserva la imagen que ya estuvieras revisando. La captura directa queda pendiente de prueba en un celular real.
+
 La lectura utiliza Tesseract.js y su modelo en inglés en el navegador. La imagen, la previsualización y el texto leído se usan durante la revisión y se descartan al cerrar el diálogo. El motor, el worker y el modelo se sirven desde el mismo alojamiento de la app. Los datos que confirmes se guardan con el formulario correspondiente.
 
 El extractor identifica etiquetas de nivel, EXP, mesos, HP/MP máximos, STR/DEX/INT/LUK base, Weapon Attack, Magic Attack, Accuracy y Avoidability. Los campos disponibles dependen del formulario abierto. El nombre, la clase, las habilidades y el equipo siguen siendo datos manuales. Para cambiar el nombre o nivel de un perfil seleccionado, edita ese perfil.

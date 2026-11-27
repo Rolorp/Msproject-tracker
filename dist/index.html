@@ -137,12 +137,14 @@
     <div class="section-heading"><h2 id="ocr-heading">Leer valores de una imagen</h2><button id="ocr-close" type="button" class="secondary">Cerrar</button></div>
     <p class="form-hint">La lectura se realiza en este navegador. Revisa los números antes de aplicarlos. Una captura recortada y nítida facilita la lectura.</p>
     <label>Captura o foto (PNG, JPG o WebP, hasta 15 MB)<input id="ocr-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+    <button id="ocr-open-camera" class="secondary image-import" type="button">Tomar foto</button>
+    <input id="ocr-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden>
     <img id="ocr-preview" alt="Imagen seleccionada para leer valores" hidden>
     <button id="ocr-read" class="image-import" type="button">Leer imagen</button>
     <p id="ocr-status" role="status" class="form-hint"></p>
     <details><summary>Revisar el texto leído</summary><label>Texto detectado<textarea id="ocr-text" rows="6" spellcheck="false"></textarea></label><button id="ocr-extract" class="secondary image-import" type="button">Extraer valores del texto</button></details>
     <form id="ocr-review"><div id="ocr-candidates"></div><button id="ocr-apply" type="submit" disabled>Aplicar valores revisados</button></form>
   </dialog>
-  <footer>MSproject tracker <span>v0.3 · Proyecto de fans independiente</span></footer>
+  <footer>MSproject tracker <span>v0.3.1 · Proyecto de fans independiente</span></footer>
 </body>
 </html>
