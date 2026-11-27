@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSession, finishSession } from '../dist/session.js';
+import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSession, finishSession, recordLiveProgress } from '../dist/session.js';
 
 const initial = { character: 'Mapler', map: 'Mapa de prueba', level: 30, exp: 200, mesos: 1000 };
 const final = { level: 30, exp: 800, mesos: 2500 };
@@ -28,6 +28,33 @@ test('calcula tasas activas y totales con unidades correctas', () => {
   assert.equal(result.elapsedExpPerHour, 600);
   assert.equal(result.elapsedMesosPerHour, 1500);
   assert.equal(result.activeMs, 1_800_000);
+});
+
+test('la lectura en vivo conserva el último saldo y usa el tiempo activo de cada lectura', () => {
+  const resumed = resumeSession(pauseSession(start(), 61_000), 121_000);
+  const withBalance = recordLiveProgress({}, { level: 30, exp: 200, mesos: 1500 }, resumed, 181_000);
+  assert.deepEqual(withBalance.mesos, { value: 1500, rate: 15000, capturedAt: 181_000 });
+  const withoutInventory = recordLiveProgress(withBalance, { level: 30, exp: 150, expPercent: 5 }, resumed, 241_000);
+  assert.equal(withoutInventory.exp.rate, -1000);
+  assert.equal(withoutInventory.mesos, withBalance.mesos);
+  assert.equal(recordLiveProgress(withoutInventory, { mesos: 0 }, resumed, 241_000).mesos.value, 0);
+});
+
+test('confirma un nivel nuevo antes de usarlo y deja la tasa pendiente al cruzar niveles', () => {
+  const session = start();
+  const first = recordLiveProgress({}, { level: 30, exp: 400 }, session, 61_000);
+  const pending = recordLiveProgress(first, { level: 31, exp: 20 }, session, 71_000);
+  assert.equal(pending.exp, first.exp);
+  assert.equal(pending.pendingLevel, 31);
+  const accepted = recordLiveProgress(pending, { level: 31, exp: 23 }, session, 81_000);
+  assert.equal(accepted.exp.level, 31);
+  assert.equal(accepted.exp.rate, null);
+  const staleLevel = recordLiveProgress(accepted, { level: 30, exp: 400 }, session, 85_000);
+  assert.equal(staleLevel.exp, accepted.exp);
+  const percentOnly = recordLiveProgress(accepted, { level: 31, expPercent: 44.16 }, session, 91_000);
+  assert.equal(percentOnly.exp.value, null);
+  assert.equal(percentOnly.exp.percent, 44.16);
+  assert.equal(percentOnly.exp.rate, null);
 });
 
 test('usa todos los requisitos manuales cuando se superan varios niveles', () => {

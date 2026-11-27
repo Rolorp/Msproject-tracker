@@ -45,6 +45,27 @@ export function activeMilliseconds(session, now) {
   return session.activeMs + runningMs;
 }
 
+export function recordLiveProgress(previous, values, session, capturedAt) {
+  const next = { ...previous };
+  const hours = activeMilliseconds(session, capturedAt) / 3_600_000;
+  if (Number.isSafeInteger(values.mesos) && values.mesos >= 0) {
+    next.mesos = { value: values.mesos, capturedAt, rate: hours > 0 ? (values.mesos - session.initialMesos) / hours : null };
+  }
+  const exp = Number.isSafeInteger(values.exp) && values.exp >= 0 ? values.exp : null;
+  const percent = Number.isFinite(values.expPercent) && values.expPercent >= 0 && values.expPercent <= 100 ? values.expPercent : null;
+  if (exp === null && percent === null) return { ...next, pendingLevel: null };
+  const level = Number.isSafeInteger(values.level) && values.level >= 1 ? values.level : null;
+  const lastLevel = previous.level ?? session.initialLevel;
+  // Confirm a new level in two samples. The EXP can rise between samples.
+  next.pendingLevel = null;
+  if (level !== null && level < lastLevel) return next;
+  if (level > lastLevel && level !== previous.pendingLevel) return { ...next, pendingLevel: level };
+  next.level = level ?? lastLevel;
+  next.exp = { value: exp, percent, level, capturedAt, rate: level === session.initialLevel && exp !== null && hours > 0
+    ? (exp - session.initialExp) / hours : null };
+  return next;
+}
+
 export function pauseSession(session, now) {
   if (session.status !== 'running') throw new Error('La sesión debe estar en curso.');
   return { ...session, activeMs: activeMilliseconds(session, now), resumedAt: null, status: 'paused' };

@@ -1,4 +1,4 @@
-import { parseOcrClass, validClass } from './jobs.js?v=0.6.2';
+import { parseOcrClass, validClass } from './jobs.js?v=0.7.0';
 
 export function mergeReadings(primary, fallback) {
   const values = { ...fallback.values, ...primary.values };

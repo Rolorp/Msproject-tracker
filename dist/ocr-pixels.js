@@ -43,7 +43,7 @@ export function trimBalanceBorders(source, box) {
   return { ...box, y0: light[0].y, y1: light.at(-1).y + 1 };
 }
 
-export function panelPixels(source, box, { invert = false, binary = false, redText = false } = {}) {
+export function panelPixels(source, box, { invert = false, binary = false, redText = false, whiteText = false, threshold = 150 } = {}) {
   const height = 96, margin = 8;
   const innerWidth = Math.max(1, Math.round((box.x1 - box.x0) * height / (box.y1 - box.y0)));
   const inner = resizePixels(source, box, innerWidth, height);
@@ -52,9 +52,9 @@ export function panelPixels(source, box, { invert = false, binary = false, redTe
   let minimum = 255, maximum = 0;
   for (let i = 0; i < inner.data.length; i += 4) {
     const red = inner.data[i], green = inner.data[i + 1], blue = inner.data[i + 2];
-    const gray = redText
-      ? Math.max(0, 255 - 4 * Math.max(0, red - green))
-      : Math.round(red * .299 + green * .587 + blue * .114);
+    let gray = Math.round(red * .299 + green * .587 + blue * .114);
+    if (whiteText) gray = Math.min(red, green, blue);
+    if (redText) gray = Math.max(0, 255 - 4 * Math.max(0, red - green));
     inner.data[i] = gray;
     minimum = Math.min(minimum, gray); maximum = Math.max(maximum, gray);
   }
@@ -62,7 +62,7 @@ export function panelPixels(source, box, { invert = false, binary = false, redTe
     const i = (y * innerWidth + x) * 4;
     let gray = maximum > minimum ? (inner.data[i] - minimum) * 255 / (maximum - minimum) : inner.data[i];
     if (invert) gray = 255 - gray;
-    if (binary) gray = gray < 150 ? 0 : 255;
+    if (binary) gray = gray < threshold ? 0 : 255;
     const target = ((y + margin) * width + x + margin) * 4;
     data[target] = gray; data[target + 1] = gray; data[target + 2] = gray;
   }

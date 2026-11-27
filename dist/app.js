@@ -1,9 +1,10 @@
-import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSession, finishSession } from './session.js?v=0.6.2';
-import { saveProfile } from './profile.js?v=0.6.2';
-import { emptyState, restoreState } from './state.js?v=0.6.2';
-import { setupImageImport } from './ocr.js?v=0.6.2';
-import { ATTRIBUTES, CHARACTER_FIELDS, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js?v=0.6.2';
-import { JOBS, profileClass, classLabel } from './jobs.js?v=0.6.2';
+import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSession, finishSession } from './session.js?v=0.7.0';
+import { saveProfile } from './profile.js?v=0.7.0';
+import { emptyState, restoreState } from './state.js?v=0.7.0';
+import { setupImageImport } from './ocr.js?v=0.7.0';
+import { setupScreenCapture } from './screen-capture.js?v=0.7.0';
+import { ATTRIBUTES, CHARACTER_FIELDS, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js?v=0.7.0';
+import { JOBS, profileClass, classLabel } from './jobs.js?v=0.7.0';
 
 const STORAGE_KEY = 'msproject-tracker.v1';
 const $ = id => document.getElementById(id);
@@ -233,6 +234,31 @@ function renderRequirements() {
   }
 }
 
+function applyScreenValues(values) {
+  const session = state.current;
+  if (session && session.status !== 'finishing') return 'Los valores se pueden aplicar antes de iniciar o al finalizar.';
+  const form = $(session ? 'finish-form' : 'start-form');
+  const expectedName = session?.character || (form.elements.character?.readOnly ? form.elements.character.value : '');
+  const normalized = name => name.toLowerCase().replace(/[il1]/g, 'i');
+  if (expectedName && values.name && normalized(values.name) !== normalized(expectedName)) {
+    return 'El personaje leído es distinto del que figura en la sesión. Revisa la ventana compartida.';
+  }
+  if (values.level !== undefined && (form.elements.level.readOnly && Number(form.elements.level.value) !== values.level ||
+      session && values.level < session.initialLevel)) {
+    return 'El nivel leído no coincide con el perfil o con la sesión. Revisa el nivel antes de aplicar.';
+  }
+  if (!session && values.name && !form.elements.character.readOnly) {
+    form.elements.character.value = values.name;
+  }
+  for (const key of ['level', 'exp', 'mesos']) {
+    const control = form.elements.namedItem(key);
+    if (values[key] === undefined || control.readOnly) continue;
+    control.value = values[key];
+    control.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  return 'Lectura aplicada. Revisa los datos del formulario antes de continuar.';
+}
+
 function renderResults() {
   const result = state.history.find(session => session.id === selectedResultId) || state.history[0];
   $('results').hidden = !result;
@@ -309,6 +335,7 @@ function render() {
   updateClock();
   renderHistory();
   renderResults();
+  screenCapture.sync();
 }
 
 $('start-form').addEventListener('submit', event => {
@@ -442,6 +469,8 @@ appendNumericFields([...PROGRESS_FIELDS, ...CHARACTER_FIELDS.filter(field => ['f
 appendNumericFields(CHARACTER_FIELDS.filter(field => ATTRIBUTES.some(key => field.key === `${key}Total`)), 'profile-attribute-fields');
 appendNumericFields(COMBAT_FIELDS.filter(field => field.key !== 'weaponAttack'), 'profile-combat-fields');
 setupImageImport();
+const screenCapture = setupScreenCapture(() => state.current, applyScreenValues);
 $('profile-form').elements.job.addEventListener('input', () => updateSpecializations($('profile-form').elements.specialization.value));
 render();
 setInterval(updateClock, 250);
+setInterval(screenCapture.refresh, 1000);

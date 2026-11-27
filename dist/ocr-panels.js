@@ -212,14 +212,16 @@ function balanceRegion(image, mask, coins) {
   return best ?? fallback;
 }
 
-export function detectPanelRegions(image) {
+export function detectPanelRegions(image, balanceOnly = false) {
   const { width, height } = image;
   const mask = colorMask(image);
   const visited = new Uint8Array(mask.length);
   const queue = new Int32Array(mask.length);
+  const coins = components(mask, YELLOW, width, height, visited, queue);
+  const balance = balanceRegion(image, mask, coins);
+  if (balanceOnly) return balance ? clipRegions([balance], width, height) : [];
   const greens = components(mask, GREEN, width, height, visited, queue);
   const blues = components(mask, BLUE, width, height, visited, queue);
-  const coins = components(mask, YELLOW, width, height, visited, queue);
   let character = null;
   for (const column of greens) {
     if (column.width < width * .02) continue;
@@ -256,8 +258,11 @@ export function detectPanelRegions(image) {
     for (const rows of groups) if (!combat || column.width > combat.column.width) combat = { column, rows };
   }
   if (combat) regions.push(...valueRegions(combat.column, combat.rows, ['ATTACK', 'WEAPON DEF', 'MAGIC', 'MAGIC DEF', 'ACCURACY', 'EVASION', 'CRIT RATE', 'CRIT DAMAGE', 'SPEED', 'JUMP'], {}, 1.6));
-  const balance = balanceRegion(image, mask, coins);
   if (balance) regions.push(balance);
+  return clipRegions(regions, width, height);
+}
+
+function clipRegions(regions, width, height) {
   return regions.map(region => ({ ...region, x0: Math.max(0, Math.floor(region.x0)), x1: Math.min(width, Math.ceil(region.x1)), y0: Math.max(0, Math.floor(region.y0)), y1: Math.min(height, Math.ceil(region.y1)) }))
     .filter(region => region.x1 - region.x0 >= 4 && region.y1 - region.y0 >= 4);
 }

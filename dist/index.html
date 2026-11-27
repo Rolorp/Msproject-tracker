@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#10241f">
   <meta name="description" content="Mide la EXP y los mesos por hora de tus sesiones de MapleStory Classic World.">
   <title>MSproject tracker</title>
-  <link rel="stylesheet" href="styles.css?v=0.6.2">
-  <script type="module" src="app.js?v=0.6.2"></script>
+  <link rel="stylesheet" href="styles.css?v=0.7.0">
+  <script type="module" src="app.js?v=0.7.0"></script>
 </head>
 <body>
   <header class="topbar">
@@ -83,6 +83,20 @@
         <p class="storage-note">La sesión se conserva al recargar. Datos guardados en este navegador.</p>
       </div>
       <div class="form-panel">
+        <section id="screen-capture" class="screen-capture" aria-label="Captura de ventana" hidden>
+          <div class="screen-controls">
+            <button id="screen-share" class="secondary" type="button">Compartir ventana</button>
+            <button id="screen-read" class="secondary" type="button" hidden>Leer valores</button>
+            <button id="screen-stop" class="text-button" type="button" hidden>Dejar de compartir</button>
+          </div>
+          <p id="screen-status" class="form-hint" role="status"></p>
+          <p id="screen-review" hidden></p>
+          <button id="screen-apply" class="secondary" type="button" hidden>Usar valores en el formulario</button>
+          <dl id="screen-live" class="screen-live" hidden>
+            <div><dt>EXP actual</dt><dd><span id="screen-exp"></span><small id="screen-exp-time"></small></dd></div>
+            <div><dt>Saldo de mesos</dt><dd><span id="screen-mesos"></span><small id="screen-mesos-time"></small></dd></div>
+          </dl>
+        </section>
         <form id="start-form">
           <h2>Antes de empezar</h2>
           <button class="secondary image-import" type="button" data-ocr-form="start-form">Leer valores de una imagen</button>
@@ -156,6 +170,6 @@
       <button id="ocr-apply" type="submit" disabled>Aplicar datos revisados</button>
     </form>
   </dialog>
-  <footer>MSproject tracker <span>v0.6.2 · Proyecto de fans independiente</span></footer>
+  <footer>MSproject tracker <span>v0.7.0 · Proyecto de fans independiente</span></footer>
 </body>
 </html>

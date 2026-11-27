@@ -1,8 +1,8 @@
-import { detectPanelRegions, resourceParts, mesosLabelRegions } from './ocr-panels.js?v=0.6.2';
-import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.6.2';
-import { extractHudClass, rightAlignedBalance, confirmedBalance, mergeReadings } from './ocr-evidence.js?v=0.6.2';
-import { balanceDigits, resizePixels, panelPixels, trimBalanceBorders } from './ocr-pixels.js?v=0.6.2';
-import { parseOcrClass } from './jobs.js?v=0.6.2';
+import { detectPanelRegions, resourceParts, mesosLabelRegions } from './ocr-panels.js?v=0.7.0';
+import { extractValues, layoutText, OCR_FIELDS } from './ocr-parser.js?v=0.7.0';
+import { extractHudClass, rightAlignedBalance, confirmedBalance, mergeReadings } from './ocr-evidence.js?v=0.7.0';
+import { balanceDigits, resizePixels, panelPixels, trimBalanceBorders } from './ocr-pixels.js?v=0.7.0';
+import { parseOcrClass } from './jobs.js?v=0.7.0';
 
 function imagePixels(image) {
   const canvas = document.createElement('canvas');
@@ -139,6 +139,132 @@ async function readSpecialization(worker, source, box, job, cancelled, mode = '7
     if (result.specialization && (!job || result.job === job)) return result;
   }
   return null;
+}
+
+function wordsOf(blocks = []) {
+  return (blocks || []).flatMap(block => (block.paragraphs || []).flatMap(paragraph =>
+    (paragraph.lines || []).flatMap(line => line.words || [])));
+}
+
+function levelBadges(hud, expBox) {
+  const h = expBox.y1 - expBox.y0;
+  const from = Math.max(0, Math.floor(expBox.y0 - h * .65));
+  const to = Math.min(hud.height, Math.ceil(expBox.y1 + h * 1.4));
+  const badges = [];
+  for (let x = Math.floor(hud.width * .02); x < hud.width * .22; x += 1) {
+    let count = 0, top = to, bottom = from;
+    for (let y = from; y < to; y += 1) {
+      const offset = (y * hud.width + x) * 4;
+      const red = hud.data[offset], green = hud.data[offset + 1], blue = hud.data[offset + 2];
+      if (red < 155 || green < 65 || red < green * 1.22 || blue > green * .83) continue;
+      count += 1;
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y + 1);
+    }
+    if (count < h * .23) continue;
+    const last = badges.at(-1);
+    if (last && x - last.x1 <= h * .025) {
+      last.x1 = x + 1;
+      last.y0 = Math.min(last.y0, top);
+      last.y1 = Math.max(last.y1, bottom);
+    } else {
+      badges.push({ x0: x, x1: x + 1, y0: top, y1: bottom });
+    }
+  }
+  const digits = badges.filter(box => {
+    const height = box.y1 - box.y0, width = box.x1 - box.x0;
+    return height >= h * .38 && width >= height * .45 && width <= height * 1.3;
+  });
+  if (digits.length > 3 || digits.some((box, i) => i && box.x0 - digits[i - 1].x1 > h * .4)) return [];
+  return digits;
+}
+
+async function readHudProgress(worker, source, cancelled) {
+  const hudBox = { x0: 0, x1: Math.round(source.width * .88), y0: Math.round(source.height * .89), y1: source.height };
+  const scale = Math.min(2.5, 2500 / hudBox.x1);
+  const hud = resizePixels(source, hudBox, Math.round(hudBox.x1 * scale), Math.round((hudBox.y1 - hudBox.y0) * scale));
+  await worker.setParameters({ tessedit_pageseg_mode: '11', tessedit_char_whitelist: '' });
+  const { data } = await worker.recognize(pixelCanvas(hud), {}, { text: true, blocks: true });
+  if (cancelled()) return {};
+  const rows = layoutText(data.blocks).split('\n');
+  // On the HUD, EXP is in the same line as the HP/MP values. This excludes
+  // pickup messages, item descriptions and other text near the bottom.
+  const row = rows.find(text => /\b[HM]P\W*\d/i.test(text) && /\bEXP[.: ]*\d/i.test(text));
+  if (!row) return {};
+  const values = extractValues(row.replace(/\[/g, '(')).values;
+  if (values.expPercent > 100) delete values.expPercent;
+
+  const words = wordsOf(data.blocks).filter(word => word.bbox && word.text);
+  const expWord = words.find(word => /^EXP(?:[.:]|\d|$)/i.test(word.text) && word.bbox.x0 > hud.width * .35);
+  if (!expWord) return values;
+  const expBox = expWord.bbox;
+  const height = expBox.y1 - expBox.y0;
+  const amounts = words.filter(word => /^[[(]?\d/.test(word.text) && word.bbox.x0 >= expBox.x1 - 2 &&
+    word.bbox.x1 < expBox.x0 + height * 12 && Math.abs(word.bbox.y0 - expBox.y0) <= height * .45);
+  if (amounts.length && !cancelled()) {
+    const short = Math.min(...amounts.map(word => word.bbox.y1 - word.bbox.y0)) < height * .67;
+    const bounds = {
+      x0: Math.max(0, expBox.x0 - height * .1),
+      x1: Math.min(hud.width, Math.max(...amounts.map(word => word.bbox.x1)) + height * .18),
+      y0: Math.max(0, expBox.y0 + height * (short ? .14 : -.08)),
+      y1: Math.min(hud.height, expBox.y0 + height * (short ? .75 : 1.05))
+    };
+    await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: 'EXP0123456789.,()%[] ' });
+    const { data: exact } = await worker.recognize(panelImage(hud, bounds, { invert: true }));
+    const reading = extractValues(exact.text.replace(/\[/g, '(')).values;
+    if (reading.exp !== undefined && (reading.expPercent !== undefined || values.exp === undefined)) values.exp = reading.exp;
+    if (reading.expPercent >= 0 && reading.expPercent <= 100) values.expPercent = reading.expPercent;
+  }
+  if (values.level !== undefined || cancelled()) return values;
+
+  const badges = levelBadges(hud, expBox);
+  if (!badges.length) return values;
+  const bounds = {
+    x0: Math.max(0, badges[0].x0 - height * .08),
+    x1: Math.min(hud.width, badges.at(-1).x1 + height * .08),
+    y0: Math.max(0, Math.min(...badges.map(badge => badge.y0)) - height * .025),
+    y1: Math.min(hud.height, Math.max(...badges.map(badge => badge.y1)) + height * .04)
+  };
+  for (const [mode, binary] of [['7', false], ['13', true]]) {
+    if (cancelled()) return values;
+    await worker.setParameters({ tessedit_pageseg_mode: mode, tessedit_char_whitelist: '0123456789' });
+    const { data: reading } = await worker.recognize(panelImage(hud, bounds, { invert: true, whiteText: true, binary, threshold: 132 }));
+    const raw = reading.text.replace(/\s+/g, '');
+    if (/^[1-9]\d{0,2}$/.test(raw) && raw.length === badges.length && reading.confidence >= 40) {
+      values.level = Number(raw);
+      break;
+    }
+  }
+  return values;
+}
+
+export async function recognizeSessionFrame(worker, source, cancelled, review = false) {
+  const hud = await readHudProgress(worker, source, cancelled);
+  if (cancelled()) return null;
+  const needStats = review || hud.level === undefined || (hud.exp === undefined && hud.expPercent === undefined);
+  const scale = Math.min(2, 1440 / source.width, 1920 / source.height);
+  const analysis = resizePixels(source, { x0: 0, y0: 0, x1: source.width, y1: source.height }, Math.round(source.width * scale), Math.round(source.height * scale));
+  const regions = detectPanelRegions(analysis, !needStats);
+  const lines = [];
+  for (const region of regions) {
+    if (cancelled()) return null;
+    const label = region.label;
+    if (!['LEVEL', 'EXP', 'MESOS'].includes(label) && !(review && label === 'NAME')) continue;
+    const box = originalBox(source, analysis, region);
+    if (label === 'MESOS') {
+      const value = await readBalance(worker, source, box, cancelled, true, true);
+      if (value) lines.push(`MESOS ${value}`);
+      continue;
+    }
+    await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: label === 'NAME' ? '' : '0123456789.,%() ' });
+    const { data } = await worker.recognize(panelImage(source, box));
+    lines.push(`${label} ${data.text.trim()}`);
+  }
+  if (cancelled()) return null;
+  const stats = extractValues(lines.join('\n')).values;
+  const useStats = stats.level !== undefined && (stats.exp !== undefined || stats.expPercent !== undefined);
+  const progress = useStats ? stats : hud;
+  return { name: stats.name, level: progress.level ?? stats.level, exp: progress.exp, expPercent: progress.expPercent, mesos: stats.mesos };
 }
 
 export async function recognizeCharacterImage(worker, image, progress, cancelled) {
