@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { reviewGroup } from '../dist/ocr-review.js';
-import { extractHudClass, rightAlignedBalance } from '../dist/ocr-evidence.js';
+import { extractHudClass, rightAlignedBalance, confirmedBalance } from '../dist/ocr-evidence.js';
 
 test('los atributos leídos no aparecen pendientes y las bases sin desglose son opcionales', () => {
   const values = { strTotal: 4, dexTotal: 4, int: 204, intTotal: 222, apAvailable: 0 };
@@ -25,6 +25,16 @@ test('exige que el importe completo se encuentre al extremo derecho del saldo', 
   assert.ok(!rightAlignedBalance(reading('2', 20, 50), 1048, 112));
   assert.ok(!rightAlignedBalance(reading('99)', 700, 1010), 1048, 112));
   assert.ok(!rightAlignedBalance({ blocks: [] }, 1048, 112));
+});
+
+test('acepta lecturas completas coincidentes aunque el pixel font tenga confianza baja', () => {
+  const first = { value: 99958, aligned: true, confidence: 8 };
+  assert.equal(confirmedBalance([first, { ...first }]), '99958');
+  assert.equal(confirmedBalance([first, { ...first, value: 2 }]), '');
+  assert.equal(confirmedBalance([{ value: 2, aligned: false }, { value: 2, aligned: false }]), '');
+  assert.equal(confirmedBalance([first, { aligned: true }]), '');
+  assert.equal(confirmedBalance([first]), '');
+  assert.equal(confirmedBalance([{ value: 0, aligned: true }, { value: 0, aligned: true }]), '0');
 });
 
 test('lee la especialización en la barra inferior, separada de HP, MP y nombre', () => {

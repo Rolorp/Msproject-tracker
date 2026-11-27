@@ -58,7 +58,7 @@ La EXP absoluta y su porcentaje se guardan por separado. Un porcentaje solo requ
 
 Las pruebas incluyen imágenes sintéticas, transcripciones y detección de paneles desplazados o incompletos. Para v0.4.2 se reprodujo la lectura incompleta con la foto de monitor aportada por el usuario y se calibró la lectura por casillas con ese archivo. HP y MP se separan por su barra diagonal y las casillas de AP y mesos se delimitan por su marco para evitar leer los bordes como dígitos. La foto de usuario se conserva fuera del repositorio. La legibilidad, los elementos tapados, los reflejos y la compresión siguen afectando a la lectura y requieren revisar los valores propuestos.
 
-El saldo se asocia a la etiqueta MESOS de su misma línea, sin tomar cantidades de filas siguientes. La detección por recuadro comprueba también su etiqueta y exige lecturas numéricas coincidentes. La especialización se busca bajo JOB y en la barra inferior sobre el nombre reconocido.
+El saldo se asocia a la etiqueta MESOS de su misma línea, sin tomar cantidades de filas siguientes. La detección por recuadro busca también su etiqueta y exige dos importes completos coincidentes alineados a la derecha. La confianza del motor no se usa como umbral: la tipografía pixelada de una foto puede producir una lectura correcta con confianza baja. La especialización se busca bajo JOB y en la barra inferior sobre el nombre reconocido.
 
 Si no se identifica el saldo por el recuadro del inventario, el lector busca también la etiqueta MESOS y vuelve a leer el importe a su izquierda. Un saldo no reconocido se anuncia como pendiente y puede completarse con otra foto del inventario sin borrar los demás campos aplicados.
 
