@@ -1,3 +1,5 @@
+import { detectPanelRegions } from './ocr-panels.js?v=0.4.1';
+
 export function prepareImage(image) {
   const scale = Math.min(2, 4096 / Math.max(image.naturalWidth, image.naturalHeight));
   const canvas = document.createElement('canvas');
@@ -15,4 +17,74 @@ export function prepareImage(image) {
   }
   context.putImageData(pixels, 0, 0);
   return canvas;
+}
+
+function analysisCanvas(image) {
+  const scale = Math.min(1, 1440 / image.naturalWidth, 1920 / image.naturalHeight);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(image.naturalWidth * scale);
+  canvas.height = Math.round(image.naturalHeight * scale);
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.imageSmoothingQuality = 'high';
+  context.fillStyle = 'white';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+function panelImage(source, region) {
+  const height = region.y1 - region.y0;
+  const scale = 96 / height;
+  const margin = 8;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round((region.x1 - region.x0) * scale) + margin * 2;
+  canvas.height = 96 + margin * 2;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.fillStyle = 'white';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(source, region.x0, region.y0, region.x1 - region.x0, height, margin, margin, canvas.width - margin * 2, 96);
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+  let minimum = 255, maximum = 0;
+  for (let i = 0; i < pixels.data.length; i += 4) {
+    const gray = Math.round(pixels.data[i] * .299 + pixels.data[i + 1] * .587 + pixels.data[i + 2] * .114);
+    pixels.data[i] = gray;
+    minimum = Math.min(minimum, gray);
+    maximum = Math.max(maximum, gray);
+  }
+  for (let i = 0; i < pixels.data.length; i += 4) {
+    const gray = maximum > minimum ? (pixels.data[i] - minimum) * 255 / (maximum - minimum) : pixels.data[i];
+    pixels.data[i] = gray;
+    pixels.data[i + 1] = gray;
+    pixels.data[i + 2] = gray;
+  }
+  context.putImageData(pixels, 0, 0);
+  return canvas;
+}
+
+export async function recognizeCharacterImage(worker, image, progress, cancelled) {
+  const analysis = analysisCanvas(image);
+  const context = analysis.getContext('2d', { willReadFrequently: true });
+  progress('Detectando ventanas');
+  const regions = detectPanelRegions(context.getImageData(0, 0, analysis.width, analysis.height));
+  if (!regions.length) {
+    progress('Imagen general');
+    await worker.setParameters({ tessedit_pageseg_mode: '11', preserve_interword_spaces: '1', tessedit_char_whitelist: '' });
+    return (await worker.recognize(prepareImage(image), {}, { text: true, blocks: true })).data;
+  }
+  const lines = [];
+  for (let index = 0; index < regions.length; index += 1) {
+    if (cancelled()) return null;
+    const region = regions[index];
+    const numeric = region.kind === 'number' || region.kind === 'single-number';
+    progress(`${region.label} (${index + 1}/${regions.length})`);
+    await worker.setParameters({
+      tessedit_pageseg_mode: region.kind === 'job' ? '6' : '7',
+      tessedit_char_whitelist: numeric ? '0123456789.,/+-~%() ' : ''
+    });
+    const { data } = await worker.recognize(panelImage(analysis, region));
+    const text = numeric ? data.text.trim().replace(/^[^\d.+-]+/, '') : data.text.trim();
+    lines.push(`${region.label} ${text}`);
+  }
+  return { text: lines.join('\n'), blocks: null };
 }

@@ -1,5 +1,5 @@
-import { integer } from './session.js';
-import { ATTRIBUTES, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js';
+import { integer } from './session.js?v=0.4.1';
+import { ATTRIBUTES, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js?v=0.4.1';
 
 function optionalInteger(value, label) {
   return value === null || value === undefined || String(value).trim() === ''

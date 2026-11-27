@@ -1,5 +1,5 @@
-import { extractValues, OCR_FIELDS } from './ocr-parser.js';
-import { prepareImage } from './ocr-image.js';
+import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.4.1';
+import { recognizeCharacterImage } from './ocr-image.js?v=0.4.1';
 
 function initializeWorker(tesseract, options) {
   return new Promise((resolve, reject) => {
@@ -180,6 +180,7 @@ export function setupImageImport() {
     }
     const currentGeneration = ++generation;
     let activeWorker;
+    let readingStage = 'imagen';
     setBusy(true);
     candidates.replaceChildren();
     rawText.value = '';
@@ -194,18 +195,19 @@ export function setupImageImport() {
         workerBlobURL: false,
         logger: event => {
           if (currentGeneration === generation && event.status === 'recognizing text') {
-            status.textContent = `Leyendo imagen… ${Math.round(event.progress * 100)} %`;
+            status.textContent = `Leyendo ${readingStage}… ${Math.round(event.progress * 100)} %`;
           }
         }
       });
       if (currentGeneration !== generation) return;
       worker = activeWorker;
-      await activeWorker.setParameters({ tessedit_pageseg_mode: '11', preserve_interword_spaces: '1' });
       await preview.decode();
       if (currentGeneration !== generation) return;
-      const image = prepareImage(preview);
-      const { data } = await activeWorker.recognize(image, {}, { text: true, blocks: true });
-      if (currentGeneration !== generation) return;
+      const data = await recognizeCharacterImage(activeWorker, preview, stage => {
+        readingStage = stage;
+        if (currentGeneration === generation) status.textContent = `Leyendo ${stage}…`;
+      }, () => currentGeneration !== generation);
+      if (!data || currentGeneration !== generation) return;
       rawText.value = extractValues(data.text, data.blocks).text;
       setBusy(false);
       showCandidates();

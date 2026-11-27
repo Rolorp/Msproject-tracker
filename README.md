@@ -48,11 +48,13 @@ Desde el celular también puedes pulsar **Tomar foto**. El control solicita la c
 
 La lectura utiliza Tesseract.js y su modelo en inglés en el navegador. La imagen, la previsualización y el texto leído se usan durante la revisión y se descartan al cerrar el diálogo. El motor, el worker y el modelo se sirven desde el mismo alojamiento de la app. Los datos que confirmes se guardan con el formulario correspondiente.
 
-La imagen se amplía y se ajusta en contraste antes de leerla. El OCR conserva posiciones de palabras y recompone las filas cuando etiquetas y valores se detectan en bloques distintos. Se reconocen las etiquetas de la ficha y los mesos del inventario, incluidos los casos donde la cifra aparece a la izquierda de MESOS. Un rango de Attack conserva sus dos extremos. Los atributos guardan el total mostrado y la base cuando la suma es consistente.
+En fotos de monitor, se buscan las filas de color de la ficha y los detalles para aislar sus casillas. La detección exige la estructura completa de filas antes de asociar valores a campos. Se reduce el ruido fino de la foto y cada casilla se lee por separado, con un modo específico para números. El inventario se localiza mediante su icono de moneda y su casilla de saldo. Esto evita mezclar estadísticas con texto del chat o la barra inferior.
+
+Cuando la estructura de las ventanas no se identifica, se utiliza la lectura general. El OCR conserva posiciones de palabras y recompone filas cuando etiquetas y valores aparecen en bloques distintos. Un rango de Attack conserva sus dos extremos. Los atributos guardan el total mostrado y la base cuando la suma es consistente.
 
 La EXP absoluta y su porcentaje se guardan por separado. Un porcentaje solo requiere la tabla por nivel para convertirse en EXP absoluta. Cuando un atributo aparece sin desglose, se conserva su valor mostrado y la base permanece desconocida. Para HP y MP se conserva la fracción actual/máximo. Los valores ambiguos o contradictorios quedan pendientes de corrección. Puedes revisar y corregir el texto OCR para volver a extraer los datos.
 
-Las pruebas incluyen OCR ejecutado sobre imágenes sintéticas con columnas y cantidades de objetos, además de transcripciones de las ventanas aportadas como referencia. Los originales de esas imágenes de referencia no estuvieron disponibles como archivos en el entorno de ejecución. La precisión sobre esos originales y las fotos de celular sigue pendiente de contraste. La legibilidad, los elementos tapados, el tamaño de letra y la compresión afectan a la lectura.
+Las pruebas incluyen imágenes sintéticas, transcripciones y detección de paneles desplazados o incompletos. Para v0.4.1 se reprodujo la lectura incompleta con la foto de monitor aportada por el usuario y se calibró la lectura por casillas con ese archivo. La foto de usuario se conserva fuera del repositorio. La legibilidad, los elementos tapados, los reflejos y la compresión siguen afectando a la lectura y requieren revisar los valores propuestos.
 
 ## Cálculos
 
