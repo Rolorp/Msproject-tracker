@@ -314,7 +314,7 @@ $('start-form').addEventListener('submit', event => {
 
 $('session-profile').addEventListener('change', () => applySelectedProfile(true));
 $('capture-character').addEventListener('click', () => {
-  editProfile();
+  $('profiles-panel').open = true;
   $('profile-form').querySelector('[data-ocr-form]').click();
 });
 $('new-profile').addEventListener('click', () => editProfile());

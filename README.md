@@ -30,6 +30,8 @@ Los datos se guardan en el almacenamiento local del navegador y pertenecen al or
 
 Pulsa **Capturar personaje desde una foto** para crear un perfil a partir de una captura general. Muestra la ventana CHARACTER STAT con sus detalles y el inventario, lee la imagen, revisa los datos propuestos y pulsa **Aplicar datos revisados**. Después guarda el personaje. También puedes introducir y editar los datos desde **Perfiles de personaje**.
 
+Puedes leer primero la ficha y después el inventario. Cada lectura rellena los campos seleccionados del mismo formulario y conserva los demás. Utiliza **Nuevo personaje** cuando quieras comenzar otro perfil.
+
 El perfil conserva nombre, job y especialización, nivel, HP y MP actuales y máximos, EXP absoluta y porcentaje, mesos, Fame, AP libres, atributos mostrados y bases cuando su desglose es legible. Los valores de combate incluyen el rango Attack, Weapon Def., Magic, Magic Def., Accuracy, Evasion, Crit. Rate, Crit. Damage, Speed y Jump. Los campos desconocidos quedan vacíos. Las habilidades y sus SP se registran manualmente.
 
 Selecciona el perfil en **Antes de empezar** para asociarlo a una sesión. Se rellenan nombre, nivel, EXP y mesos registrados. Revisa los valores de inicio y actualiza el perfil si cambió el nivel. La sesión conserva una copia del estado al iniciarla, consultable desde **Perfil usado en esta sesión**, aunque después modifiques el personaje. Esa copia refleja los valores de EXP y mesos usados al iniciar la sesión. El CSV incluye el identificador y la copia del perfil en columnas adicionales.
