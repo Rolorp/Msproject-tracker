@@ -1,4 +1,14 @@
-import { parseOcrClass } from './jobs.js?v=0.4.4';
+import { parseOcrClass } from './jobs.js?v=0.4.5';
+
+export function rightAlignedBalance(data, width, height, margin = 8) {
+  const words = (data.blocks || []).flatMap(block => (block.paragraphs || []).flatMap(paragraph =>
+    (paragraph.lines || []).flatMap(line => line.words || []))).filter(word => word.text?.trim());
+  if (!words.length || words.some(word => !/^[\d.,]+$/.test(word.text.trim()) || !word.bbox)) return false;
+  const right = Math.max(...words.map(word => word.bbox.x1));
+  const top = Math.min(...words.map(word => word.bbox.y0));
+  const bottom = Math.max(...words.map(word => word.bbox.y1));
+  return right <= width - margin + 2 && width - margin - right <= height * .65 && bottom - top >= height * .2;
+}
 
 // Look only within an OCR line in the bottom-left HUD crop. Never concatenate
 // chat lines, names, resource values, or strings from other parts of the image.

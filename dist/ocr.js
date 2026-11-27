@@ -1,7 +1,7 @@
-import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.4.4';
-import { recognizeCharacterImage } from './ocr-image.js?v=0.4.4';
-import { JOBS, validClass } from './jobs.js?v=0.4.4';
-import { reviewGroup } from './ocr-review.js?v=0.4.4';
+import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.4.5';
+import { recognizeCharacterImage } from './ocr-image.js?v=0.4.5';
+import { JOBS, validClass } from './jobs.js?v=0.4.5';
+import { reviewGroup } from './ocr-review.js?v=0.4.5';
 
 function initializeWorker(tesseract, options) {
   return new Promise((resolve, reject) => {

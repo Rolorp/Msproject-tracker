@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { reviewGroup } from '../dist/ocr-review.js';
-import { extractHudClass } from '../dist/ocr-evidence.js';
+import { extractHudClass, rightAlignedBalance } from '../dist/ocr-evidence.js';
 
 test('los atributos leídos no aparecen pendientes y las bases sin desglose son opcionales', () => {
   const values = { strTotal: 4, dexTotal: 4, int: 204, intTotal: 222, apAvailable: 0 };
@@ -18,6 +18,14 @@ test('los atributos leídos no aparecen pendientes y las bases sin desglose son 
 });
 
 const blocks = lines => [{ paragraphs: [{ lines: lines.map(words => ({ words: words.map(text => ({ text, confidence: 90 })) })) }] }];
+
+test('exige que el importe completo se encuentre al extremo derecho del saldo', () => {
+  const reading = (text, x0, x1) => ({ blocks: [{ paragraphs: [{ lines: [{ words: [{ text, bbox: { x0, x1, y0: 30, y1: 82 } }] }] }] }] });
+  assert.ok(rightAlignedBalance(reading('99,958', 700, 1010), 1048, 112));
+  assert.ok(!rightAlignedBalance(reading('2', 20, 50), 1048, 112));
+  assert.ok(!rightAlignedBalance(reading('99)', 700, 1010), 1048, 112));
+  assert.ok(!rightAlignedBalance({ blocks: [] }, 1048, 112));
+});
 
 test('lee la especialización en la barra inferior, separada de HP, MP y nombre', () => {
   assert.deepEqual(extractHudClass(blocks([['Wizard', '(Fire,Poison)', 'HP(611/1054)'], ['Mapler']])),
