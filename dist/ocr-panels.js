@@ -279,6 +279,68 @@ export function mesosLabelRegions(blocks, width, height) {
   }).filter(box => box.x1 > box.x0 && box.y1 > box.y0);
 }
 
+export function inventoryLabelRegions(blocks, width, height) {
+  const titles = (blocks || []).flatMap(block => (block.paragraphs || []).flatMap(paragraph => paragraph.lines || []))
+    .filter(line => line.bbox && /\bITEM\s+INVENTOR[YV]\b/i.test((line.words || []).map(word => word.text).join(' ')));
+  return mesosLabelRegions(blocks, width, height).filter(region => {
+    const h = region.y1 - region.y0;
+    return titles.some(({ bbox }) => region.y0 - bbox.y1 >= h * 5 && region.y0 - bbox.y1 <= h * 50 &&
+      region.x1 >= bbox.x1 && region.x1 - bbox.x0 <= h * 28);
+  }).slice(0, 3);
+}
+
+// Fallback for small or faded coin icons: locate pale balance slots against
+// a blue footer, then let OCR verify the label to their right.
+export function inventoryFooterRegions(image) {
+  const { data, width, height } = image;
+  const mask = colorMask(image);
+  const pale = (x, y) => {
+    const offset = (y * width + x) * 4;
+    const r = data[offset], g = data[offset + 1], b = data[offset + 2];
+    return Math.min(r, g, b) > 172 && Math.max(r, g, b) - Math.min(r, g, b) < 42;
+  };
+  const step = Math.max(3, Math.round(height / 450));
+  const probe = Math.max(9, Math.floor(width * .035));
+  const results = [];
+  for (let y = step; y < height - step; y += step) {
+    for (let x = probe * 2; x < width - step * 3; x += 1) {
+      const at = y * width + x;
+      if (!(mask[at] & BLUE) || !(mask[at + step] & BLUE) || (mask[at - step] & BLUE)) continue;
+      if (!pale(x - step * 2, y) || !pale(x - probe * 2, y)) continue;
+      let top = y, bottom = y + 1;
+      while (top > 0 && pale(x - probe * 2, top - 1)) top -= 1;
+      while (bottom < height && pale(x - probe * 2, bottom)) bottom += 1;
+      const h = bottom - top;
+      if (h < 5 || h > height * .05 || x + h * 2 >= width) continue;
+      if (results.some(box => Math.abs(box.x1 - x) < h * .55 && Math.abs(box.y0 - top) < h * .5)) continue;
+      const box = { label: 'MESOS', x0: Math.max(0, x - h * 9), x1: x - step, y0: top, y1: bottom };
+      const labelBox = { x0: x + 2, x1: Math.min(width, x + h * 3), y0: Math.max(0, top - h * .15), y1: Math.min(height, bottom + h * .15) };
+      let blue = 0, bright = 0, pixels = 0;
+      for (let row = top; row < bottom; row += step) for (let col = x + step; col < labelBox.x1; col += step) {
+        pixels += 1;
+        if (mask[row * width + col] & BLUE) blue += 1;
+        else if (pale(col, row)) bright += 1;
+      }
+      if (pixels && blue / pixels >= .3 && bright / pixels >= .07) {
+        results.push({ ...box, labelBox, score: (blue + bright * 2) / pixels });
+      }
+      x += step;
+    }
+  }
+  return results.sort((a, b) => b.score - a.score).slice(0, 12).map(candidate => {
+    const h = candidate.y1 - candidate.y0;
+    const area = { x0: candidate.x1 - h * 22, x1: candidate.x1 + h * .5,
+      y0: candidate.y0 - h * .55, y1: candidate.y1 + h * .55 };
+    const frame = framedBox(image, area, h * 6, h * .7, h * 1.8) ?? framedBox(image, area, h * 6, h * .7, h * 1.8, 165);
+    if (!frame || Math.abs(frame.x1 - candidate.x1) > h * 1.6) return candidate;
+    const fieldHeight = frame.y1 - frame.y0;
+    return { ...frame, label: 'MESOS', labelBox: {
+      x0: frame.x1 + fieldHeight * .28, x1: Math.min(width, frame.x1 + fieldHeight * 2.8),
+      y0: frame.y0 + fieldHeight * .18, y1: frame.y1 - fieldHeight * .14
+    } };
+  });
+}
+
 export function resourceParts(image, region) {
   const width = region.x1 - region.x0, height = region.y1 - region.y0;
   const ink = new Uint8Array(width * height);

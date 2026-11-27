@@ -221,6 +221,28 @@ p {
   gap:.5rem;
 }
 
+.screen-diagnostics {
+  display:grid;
+  gap:.35rem;
+  margin:.7rem 0;
+}
+
+.screen-diagnostics div {
+  display:grid;
+  grid-template-columns:4.5rem minmax(0,1fr);
+  align-items:baseline;
+  gap:.5rem;
+}
+
+.screen-diagnostics dd {
+  margin:0;
+  font-size:.875rem;
+}
+
+.screen-diagnostics [data-ready="true"] {
+  color:var(--accent);
+}
+
 .screen-live {
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { recognizeCharacterImage } from '../dist/ocr-image.js';
+import { recognizeCharacterImage, recognizeSessionFrame } from '../dist/ocr-image.js';
 import { panelImage } from './helpers/panel-image.js';
 import { detectPanelRegions } from '../dist/ocr-panels.js';
 import { mergeReadings } from '../dist/ocr-evidence.js';
@@ -21,6 +21,31 @@ class PixelCanvas {
     };
   }
 }
+
+test('lee la EXP de la barra aunque HP y MP queden tapados', async () => {
+  const width = 1000, height = 800;
+  const source = { width, height, data: new Uint8ClampedArray(width * height * 4).fill(255) };
+  const previous = globalThis.document;
+  globalThis.document = { createElement: () => new PixelCanvas() };
+  const words = [
+    { text: 'EXP', bbox: { x0: 960, x1: 1010, y0: 170, y1: 197 } },
+    { text: '206,845', bbox: { x0: 1015, x1: 1120, y0: 172, y1: 197 } },
+    { text: '(44.16%)', bbox: { x0: 1130, x1: 1240, y0: 172, y1: 197 } }
+  ];
+  const worker = {
+    setParameters: async () => {},
+    recognize: async () => ({ data: { text: 'EXP 206,845 (44.16%)', blocks: [{ paragraphs: [{ lines: [{ words }] }] }] } })
+  };
+  try {
+    const result = await recognizeSessionFrame(worker, source, () => false, false, false);
+    assert.equal(result.exp, 206845);
+    assert.equal(result.expSource, 'hud');
+    assert.equal(result.inventory, 'missing');
+  } finally {
+    if (previous === undefined) delete globalThis.document;
+    else globalThis.document = previous;
+  }
+});
 
 test('recupera todos los campos generales aunque haya ventanas detectadas y fallen los recortes', async () => {
   const image = panelImage();

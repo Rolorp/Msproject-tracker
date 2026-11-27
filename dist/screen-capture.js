@@ -1,9 +1,10 @@
-import { recognizeSessionFrame } from './ocr-image.js?v=0.7.0';
-import { createOcrWorker } from './ocr-worker.js?v=0.7.0';
-import { recordLiveProgress } from './session.js?v=0.7.0';
+import { recognizeSessionFrame } from './ocr-image.js?v=0.7.1';
+import { createOcrWorker } from './ocr-worker.js?v=0.7.1';
+import { recordLiveProgress } from './session.js?v=0.7.1';
 
 const INTERVAL = 3500;
 const STALE_AFTER = 15000;
+const INVENTORY_RETRY = 10000;
 const FORMAT = new Intl.NumberFormat('es', { maximumFractionDigits: 2 });
 const TIME = new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -22,12 +23,42 @@ export function setupScreenCapture(getSession, applyValues) {
   let previousSession = null;
   let review = null;
   let live = {};
+  let diagnosis = null;
   let notice = 'Selecciona la ventana de MapleStory. Abre el inventario al tomar los valores iniciales y finales.';
 
   function stamp(value) {
     if (!value) return '';
     const stale = !connection || Date.now() - value.capturedAt > STALE_AFTER;
     return `Última lectura ${TIME.format(value.capturedAt)}${stale ? ' · desactualizada' : ''}`;
+  }
+
+  function renderDiagnostics(tracking) {
+    const age = reading => Math.max(0, Math.floor((Date.now() - reading.capturedAt) / 1000));
+    const detectedExp = diagnosis?.expSource;
+    const absolute = diagnosis?.exp !== undefined;
+    const expText = detectedExp
+      ? `${detectedExp === 'hud' ? 'Barra inferior' : 'Ficha del personaje'} · ${absolute ? 'EXP leída' : 'Solo porcentaje'} hace ${age(diagnosis)} s`
+      : 'Pendiente · deja visible la barra inferior';
+    const mesosText = diagnosis?.inventory === 'read'
+      ? `Saldo leído hace ${age(diagnosis)} s`
+      : diagnosis?.inventory === 'unreadable'
+        ? 'Inventario detectado · saldo ilegible'
+        : 'Pendiente · abre el inventario';
+    const windowText = permissionRequest ? 'Esperando permiso' : !connection ? 'Sin compartir'
+      : connection.frameState === 'received' ? `Imagen recibida · ${connection.video.videoWidth} × ${connection.video.videoHeight}`
+      : connection.frameState === 'blank' ? 'Imagen oscura · comprueba la ventana del juego'
+      : connection.frameState === 'waiting' ? 'Sin imagen nueva' : 'Esperando imagen';
+    const current = !!connection && !!diagnosis && age(diagnosis) * 1000 <= STALE_AFTER;
+    const previous = reading => reading ? ` · última lectura hace ${age(reading)} s` : '';
+    for (const [id, text, ready] of [
+      ['capture-window-state', windowText, connection?.frameState === 'received'],
+      ['capture-exp-state', (connection ? expText : 'Pendiente de captura') + (tracking && !detectedExp ? previous(live.exp) : ''), current && !!detectedExp],
+      ['capture-mesos-state', (connection ? mesosText : 'Pendiente de captura') + (tracking && diagnosis?.inventory !== 'read' ? previous(live.mesos) : ''), current && diagnosis?.inventory === 'read']
+    ]) {
+      const field = $(id);
+      if (field.textContent !== text) field.textContent = text;
+      field.dataset.ready = String(!!ready);
+    }
   }
 
   function refresh() {
@@ -37,15 +68,15 @@ export function setupScreenCapture(getSession, applyValues) {
     share.hidden = !!connection;
     share.disabled = !!permissionRequest;
     stop.hidden = !connection && !permissionRequest;
-    read.hidden = !readable || tracking;
+    read.hidden = !readable || session?.status === 'paused';
     read.disabled = !!connection?.reading;
+    read.textContent = tracking ? 'Leer ahora' : 'Leer valores';
     apply.hidden = tracking || !review || !['level', 'exp', 'mesos', 'name'].some(key => review?.values[key] !== undefined);
     $('screen-review').hidden = tracking || !review;
     $('screen-live').hidden = !tracking || (!connection && !live.exp && !live.mesos);
 
-    const active = connection ? 'Compartiendo ventana. ' : '';
-    const description = `${active}${notice}`;
-    if (status.textContent !== description) status.textContent = description;
+    if (status.textContent !== notice) status.textContent = notice;
+    renderDiagnostics(tracking);
 
     if (!tracking && review) {
       const { values, capturedAt } = review;
@@ -86,6 +117,7 @@ export function setupScreenCapture(getSession, applyValues) {
     permissionRequest = null;
     const current = connection;
     connection = null;
+    diagnosis = null;
     if (current) {
       clearTimeout(current.timer);
       current.stream.getTracks().forEach(track => track.stop());
@@ -102,7 +134,7 @@ export function setupScreenCapture(getSession, applyValues) {
     current.timer = setTimeout(() => takeReading(current), INTERVAL);
   }
 
-  async function takeReading(current, forReview = false) {
+  async function takeReading(current, forReview = false, force = false) {
     if (!current?.ready || current !== connection) return;
     if (current.reading) {
       if (forReview) current.reviewQueued = true;
@@ -115,7 +147,8 @@ export function setupScreenCapture(getSession, applyValues) {
     if (forReview ? ['running', 'paused'].includes(phase) : phase !== 'running') return;
     const { video, track } = current;
     if (track.muted || track.readyState !== 'live' || video.readyState < 2 || !video.videoWidth ||
-        (!forReview && video.currentTime === current.lastVideoTime)) {
+        (!forReview && !force && video.currentTime === current.lastVideoTime)) {
+      current.frameState = 'waiting';
       notice = 'Sin imagen nueva. Mantén visible el juego y comprueba la ventana compartida.';
       refresh();
       schedule(current);
@@ -137,6 +170,19 @@ export function setupScreenCapture(getSession, applyValues) {
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
       const frame = context.getImageData(0, 0, canvas.width, canvas.height);
       canvas.width = canvas.height = 1;
+      let light = false;
+      for (let y = 0; y < frame.height && !light; y += 8) {
+        for (let x = 0; x < frame.width && !light; x += 8) {
+          const pixel = (y * frame.width + x) * 4;
+          light = Math.max(frame.data[pixel], frame.data[pixel + 1], frame.data[pixel + 2]) > 35;
+        }
+      }
+      current.frameState = light ? 'received' : 'blank';
+      if (!light) {
+        diagnosis = null;
+        notice = 'Mantén el juego visible y comprueba la ventana compartida.';
+        return;
+      }
 
       if (!current.worker) {
         const worker = await createOcrWorker();
@@ -146,11 +192,14 @@ export function setupScreenCapture(getSession, applyValues) {
         }
         current.worker = worker;
       }
+      const searchInventory = forReview || force || capturedAt - (current.lastInventorySearch ?? 0) >= INVENTORY_RETRY;
+      if (searchInventory) current.lastInventorySearch = capturedAt;
       const values = await Promise.race([
-        recognizeSessionFrame(current.worker, frame, () => !currentPhase(), forReview),
+        recognizeSessionFrame(current.worker, frame, () => !currentPhase(), forReview, searchInventory),
         new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('Tiempo de lectura agotado')), 20000); })
       ]);
       if (!currentPhase() || !values) return;
+      diagnosis = { ...values, capturedAt };
       if (forReview) {
         review = { values, capturedAt };
         const needs = [];
@@ -232,12 +281,15 @@ export function setupScreenCapture(getSession, applyValues) {
     }
   });
   stop.addEventListener('click', () => disconnect());
-  read.addEventListener('click', () => takeReading(connection, true));
+  read.addEventListener('click', () => takeReading(connection, getSession()?.status !== 'running', true));
   apply.addEventListener('click', () => {
     if (review) notice = applyValues(review.values);
     refresh();
   });
   window.addEventListener('pagehide', () => disconnect());
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && getSession()?.status === 'running') takeReading(connection, false, true);
+  });
 
   panel.hidden = false;
   return {
@@ -249,6 +301,7 @@ export function setupScreenCapture(getSession, applyValues) {
       if (previous?.id !== session?.id) {
         review = null;
         live = {};
+        diagnosis = null;
         if (previous) {
           disconnect(session ? 'La sesión cambió. Comparte la ventana para continuar la lectura.' : 'Captura detenida al guardar la sesión.');
           return;

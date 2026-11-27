@@ -1,8 +1,8 @@
-import { detectPanelRegions, resourceParts, mesosLabelRegions } from './ocr-panels.js?v=0.7.0';
-import { extractValues, layoutText, OCR_FIELDS } from './ocr-parser.js?v=0.7.0';
-import { extractHudClass, rightAlignedBalance, confirmedBalance, mergeReadings } from './ocr-evidence.js?v=0.7.0';
-import { balanceDigits, resizePixels, panelPixels, trimBalanceBorders } from './ocr-pixels.js?v=0.7.0';
-import { parseOcrClass } from './jobs.js?v=0.7.0';
+import { detectPanelRegions, resourceParts, mesosLabelRegions, inventoryLabelRegions, inventoryFooterRegions } from './ocr-panels.js?v=0.7.1';
+import { extractValues, layoutText, OCR_FIELDS } from './ocr-parser.js?v=0.7.1';
+import { extractHudClass, rightAlignedBalance, confirmedBalance, mergeReadings } from './ocr-evidence.js?v=0.7.1';
+import { balanceDigits, resizePixels, panelPixels, trimBalanceBorders } from './ocr-pixels.js?v=0.7.1';
+import { parseOcrClass } from './jobs.js?v=0.7.1';
 
 function imagePixels(image) {
   const canvas = document.createElement('canvas');
@@ -179,33 +179,50 @@ function levelBadges(hud, expBox) {
   return digits;
 }
 
-async function readHudProgress(worker, source, cancelled) {
-  const hudBox = { x0: 0, x1: Math.round(source.width * .88), y0: Math.round(source.height * .89), y1: source.height };
-  const scale = Math.min(2.5, 2500 / hudBox.x1);
+async function readHudProgress(worker, source, cancelled, highContrast = false) {
+  const hudBox = { x0: 0, x1: Math.round(source.width * .88), y0: Math.round(source.height * (highContrast ? .86 : .89)), y1: source.height };
+  const scale = highContrast ? Math.min(3, 3000 / hudBox.x1) : Math.min(2.5, 2500 / hudBox.x1);
   const hud = resizePixels(source, hudBox, Math.round(hudBox.x1 * scale), Math.round((hudBox.y1 - hudBox.y0) * scale));
+  const input = highContrast ? { ...hud, data: new Uint8ClampedArray(hud.data) } : hud;
+  if (highContrast) for (let i = 0; i < input.data.length; i += 4) {
+    const luminance = input.data[i] * .299 + input.data[i + 1] * .587 + input.data[i + 2] * .114;
+    const inverted = 255 - ((luminance - 128) * 1.6 + 128);
+    input.data[i] = input.data[i + 1] = input.data[i + 2] = inverted;
+  }
   await worker.setParameters({ tessedit_pageseg_mode: '11', tessedit_char_whitelist: '' });
-  const { data } = await worker.recognize(pixelCanvas(hud), {}, { text: true, blocks: true });
+  const { data } = await worker.recognize(pixelCanvas(input), {}, { text: true, blocks: true });
   if (cancelled()) return {};
   const rows = layoutText(data.blocks).split('\n');
-  // On the HUD, EXP is in the same line as the HP/MP values. This excludes
-  // pickup messages, item descriptions and other text near the bottom.
-  const row = rows.find(text => /\b[HM]P\W*\d/i.test(text) && /\bEXP[.: ]*\d/i.test(text));
-  if (!row) return {};
-  const values = extractValues(row.replace(/\[/g, '(')).values;
-  if (values.expPercent > 100) delete values.expPercent;
-
   const words = wordsOf(data.blocks).filter(word => word.bbox && word.text);
-  const expWord = words.find(word => /^EXP(?:[.:]|\d|$)/i.test(word.text) && word.bbox.x0 > hud.width * .35);
-  if (!expWord) return values;
+  const anchors = words.filter(word => /^EXP(?:[.:]|\d|$)/i.test(word.text) &&
+    word.bbox.x0 > hud.width * .33 && word.bbox.y0 > hud.height * .28);
+  const expWord = anchors.sort((a, b) => b.bbox.y1 - a.bbox.y1)[0];
+  if (!expWord) return {};
   const expBox = expWord.bbox;
   const height = expBox.y1 - expBox.y0;
+  if (height < 4) return {};
   const amounts = words.filter(word => /^[[(]?\d/.test(word.text) && word.bbox.x0 >= expBox.x1 - 2 &&
-    word.bbox.x1 < expBox.x0 + height * 12 && Math.abs(word.bbox.y0 - expBox.y0) <= height * .45);
-  if (amounts.length && !cancelled()) {
-    const short = Math.min(...amounts.map(word => word.bbox.y1 - word.bbox.y0)) < height * .67;
+    word.bbox.x1 < expBox.x0 + height * 16 && Math.abs(word.bbox.y0 - expBox.y0) <= height * .6)
+    .sort((a, b) => a.bbox.x0 - b.bbox.x0);
+  const badges = levelBadges(hud, expBox);
+  const withResource = words.some(word => /^[HM]P(?:\W|\d|$)/i.test(word.text) && word.bbox.x1 < expBox.x0 &&
+    Math.abs(word.bbox.y0 - expBox.y0) < height * 1.05);
+  const anchorText = [expWord.text, ...amounts.map(word => word.text)].join(' ').replace(/\[/g, '(');
+  const matchingRow = amounts.length && rows.find(text => text.replace(/\[/g, '(').includes(anchorText));
+  const values = extractValues(matchingRow || anchorText).values;
+  const percentFound = values.expPercent >= 0 && values.expPercent <= 100;
+  if (!withResource && !badges.length && !percentFound) return {};
+  if (!percentFound) delete values.expPercent;
+  const hudLevel = rows.find(text => /^\s*LV[.:]?\s*\d/i.test(text) && /\bEXP\b/i.test(text));
+  if (hudLevel) values.level = extractValues(hudLevel).values.level;
+
+  if (!cancelled()) {
+    const short = amounts.some(word => word.bbox.y1 - word.bbox.y0 < height * .67);
     const bounds = {
       x0: Math.max(0, expBox.x0 - height * .1),
-      x1: Math.min(hud.width, Math.max(...amounts.map(word => word.bbox.x1)) + height * .18),
+      x1: Math.min(hud.width, amounts.length
+        ? Math.max(...amounts.map(word => word.bbox.x1)) + height * .18
+        : expBox.x1 + height * 9),
       y0: Math.max(0, expBox.y0 + height * (short ? .14 : -.08)),
       y1: Math.min(hud.height, expBox.y0 + height * (short ? .75 : 1.05))
     };
@@ -217,7 +234,6 @@ async function readHudProgress(worker, source, cancelled) {
   }
   if (values.level !== undefined || cancelled()) return values;
 
-  const badges = levelBadges(hud, expBox);
   if (!badges.length) return values;
   const bounds = {
     x0: Math.max(0, badges[0].x0 - height * .08),
@@ -238,33 +254,91 @@ async function readHudProgress(worker, source, cancelled) {
   return values;
 }
 
-export async function recognizeSessionFrame(worker, source, cancelled, review = false) {
-  const hud = await readHudProgress(worker, source, cancelled);
+export async function recognizeSessionFrame(worker, source, cancelled, review = false, searchInventory = true) {
+  let hud = {};
+  try {
+    hud = await readHudProgress(worker, source, cancelled);
+    if (!cancelled() && hud.exp === undefined && hud.expPercent === undefined) {
+      hud = await readHudProgress(worker, source, cancelled, true);
+    }
+  } catch {
+    // A failed HUD crop should not discard a readable inventory.
+  }
   if (cancelled()) return null;
   const needStats = review || hud.level === undefined || (hud.exp === undefined && hud.expPercent === undefined);
   const scale = Math.min(2, 1440 / source.width, 1920 / source.height);
   const analysis = resizePixels(source, { x0: 0, y0: 0, x1: source.width, y1: source.height }, Math.round(source.width * scale), Math.round(source.height * scale));
   const regions = detectPanelRegions(analysis, !needStats);
   const lines = [];
+  let inventory = 'missing';
   for (const region of regions) {
     if (cancelled()) return null;
     const label = region.label;
     if (!['LEVEL', 'EXP', 'MESOS'].includes(label) && !(review && label === 'NAME')) continue;
     const box = originalBox(source, analysis, region);
-    if (label === 'MESOS') {
-      const value = await readBalance(worker, source, box, cancelled, true, true);
-      if (value) lines.push(`MESOS ${value}`);
-      continue;
+    try {
+      if (label === 'MESOS') {
+        inventory = 'unreadable';
+        const value = await readBalance(worker, source, box, cancelled, true, true);
+        if (value) {
+          inventory = 'read';
+          lines.push(`MESOS ${value}`);
+        }
+        continue;
+      }
+      await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: label === 'NAME' ? '' : '0123456789.,%() ' });
+      const { data } = await worker.recognize(panelImage(source, box));
+      lines.push(`${label} ${data.text.trim()}`);
+    } catch {
+      // Keep the other recognized fields when a single region fails.
     }
-    await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: label === 'NAME' ? '' : '0123456789.,%() ' });
-    const { data } = await worker.recognize(panelImage(source, box));
-    lines.push(`${label} ${data.text.trim()}`);
+  }
+  if (inventory !== 'read' && searchInventory && !cancelled()) {
+    try {
+      for (const region of inventoryFooterRegions(analysis)) {
+        if (cancelled()) return null;
+        await worker.setParameters({ tessedit_pageseg_mode: '13', tessedit_char_whitelist: 'MESO05' });
+        const { data } = await worker.recognize(panelImage(source, originalBox(source, analysis, region.labelBox), { invert: true }));
+        if (!/^MES[O0][S5]$/i.test(data.text.trim().replace(/\s/g, ''))) continue;
+        inventory = 'unreadable';
+        const value = await readBalance(worker, source, originalBox(source, analysis, region), cancelled, true, true);
+        if (!value) continue;
+        inventory = 'read';
+        lines.push(`MESOS ${value}`);
+        break;
+      }
+    } catch {
+      // Try the spatially matched heading and label below.
+    }
+  }
+  if (inventory !== 'read' && searchInventory && !cancelled()) {
+    try {
+      const prepared = prepareImage(source);
+      await worker.setParameters({ tessedit_pageseg_mode: '11', tessedit_char_whitelist: '' });
+      const { data } = await worker.recognize(prepared, {}, { text: true, blocks: true });
+      const dimensions = { width: prepared.width, height: prepared.height };
+      const labels = inventoryLabelRegions(data.blocks, dimensions.width, dimensions.height);
+      prepared.width = prepared.height = 1;
+      for (const region of labels) {
+        if (cancelled()) return null;
+        inventory = 'unreadable';
+        const value = await readBalance(worker, source, originalBox(source, dimensions, region), cancelled);
+        if (!value) continue;
+        inventory = 'read';
+        lines.push(`MESOS ${value}`);
+        break;
+      }
+    } catch {
+      // The HUD remains usable even when the secondary inventory read fails.
+    }
   }
   if (cancelled()) return null;
   const stats = extractValues(lines.join('\n')).values;
-  const useStats = stats.level !== undefined && (stats.exp !== undefined || stats.expPercent !== undefined);
+  const validStats = stats.level !== undefined && (stats.exp !== undefined || stats.expPercent !== undefined);
+  const useStats = validStats && (review || hud.exp === undefined && (stats.exp !== undefined || hud.expPercent === undefined));
   const progress = useStats ? stats : hud;
-  return { name: stats.name, level: progress.level ?? stats.level, exp: progress.exp, expPercent: progress.expPercent, mesos: stats.mesos };
+  const expSource = progress.exp !== undefined || progress.expPercent !== undefined ? (useStats ? 'stats' : 'hud') : null;
+  return { name: stats.name, level: progress.level ?? stats.level, exp: progress.exp, expPercent: progress.expPercent, mesos: stats.mesos, expSource, inventory };
 }
 
 export async function recognizeCharacterImage(worker, image, progress, cancelled) {
