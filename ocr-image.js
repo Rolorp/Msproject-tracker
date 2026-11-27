@@ -1,4 +1,4 @@
-import { detectPanelRegions } from './ocr-panels.js?v=0.4.1';
+import { detectPanelRegions, resourceParts } from './ocr-panels.js?v=0.4.2';
 
 export function prepareImage(image) {
   const scale = Math.min(2, 4096 / Math.max(image.naturalWidth, image.naturalHeight));
@@ -66,7 +66,8 @@ export async function recognizeCharacterImage(worker, image, progress, cancelled
   const analysis = analysisCanvas(image);
   const context = analysis.getContext('2d', { willReadFrequently: true });
   progress('Detectando ventanas');
-  const regions = detectPanelRegions(context.getImageData(0, 0, analysis.width, analysis.height));
+  const pixels = context.getImageData(0, 0, analysis.width, analysis.height);
+  const regions = detectPanelRegions(pixels);
   if (!regions.length) {
     progress('Imagen general');
     await worker.setParameters({ tessedit_pageseg_mode: '11', preserve_interword_spaces: '1', tessedit_char_whitelist: '' });
@@ -82,8 +83,29 @@ export async function recognizeCharacterImage(worker, image, progress, cancelled
       tessedit_pageseg_mode: region.kind === 'job' ? '6' : '7',
       tessedit_char_whitelist: numeric ? '0123456789.,/+-~%() ' : ''
     });
-    const { data } = await worker.recognize(panelImage(analysis, region));
-    const text = numeric ? data.text.trim().replace(/^[^\d.+-]+/, '') : data.text.trim();
+    let text;
+    if (region.label === 'HP' || region.label === 'MP') {
+      const parts = resourceParts(pixels, region);
+      const values = [];
+      for (const part of parts) {
+        const { data } = await worker.recognize(panelImage(analysis, part));
+        values.push(data.text.trim());
+      }
+      text = values.length === 2 && values.every(value => /^\d[\d., ]*$/.test(value)) ? values.join('/') : '';
+      if (!text) {
+        const { data } = await worker.recognize(panelImage(analysis, region));
+        const ratio = data.text.trim().replace(/^[^\d]+/, '');
+        if (/^\d[\d., ]*\/\d[\d., ]*$/.test(ratio)) text = ratio;
+      }
+    } else {
+      const source = numeric ? analysis : image;
+      const box = numeric ? region : {
+        ...region, x0: region.x0 * image.naturalWidth / analysis.width, x1: region.x1 * image.naturalWidth / analysis.width,
+        y0: region.y0 * image.naturalHeight / analysis.height, y1: region.y1 * image.naturalHeight / analysis.height
+      };
+      const { data } = await worker.recognize(panelImage(source, box));
+      text = numeric ? data.text.trim().replace(/^[^\d.+-]+/, '') : data.text.trim();
+    }
     lines.push(`${region.label} ${text}`);
   }
   return { text: lines.join('\n'), blocks: null };
