@@ -22,7 +22,28 @@ export function resizePixels(source, box, width, height) {
   return { data, width, height };
 }
 
-export function panelPixels(source, box, { invert = false, binary = false } = {}) {
+// The center-left of the inventory field is normally blank. Use it to remove
+// any horizontal border captured above or below the right-aligned amount.
+export function trimBalanceBorders(source, box) {
+  const width = box.x1 - box.x0;
+  const start = Math.ceil(box.x0 + width * .15), end = Math.floor(box.x0 + width * .40);
+  if (end <= start) return box;
+  const rows = [];
+  for (let y = Math.ceil(box.y0); y < Math.floor(box.y1); y += 1) {
+    let brightness = 0;
+    for (let x = start; x < end; x += 1) {
+      const index = (y * source.width + x) * 4;
+      brightness += (source.data[index] + source.data[index + 1] + source.data[index + 2]) / 3;
+    }
+    rows.push({ y, mean: brightness / (end - start) });
+  }
+  const peak = Math.max(...rows.map(row => row.mean));
+  const light = rows.filter(row => row.mean >= peak - 19);
+  if (!light.length || light.length < rows.length * .45) return box;
+  return { ...box, y0: light[0].y, y1: light.at(-1).y + 1 };
+}
+
+export function panelPixels(source, box, { invert = false, binary = false, redText = false } = {}) {
   const height = 96, margin = 8;
   const innerWidth = Math.max(1, Math.round((box.x1 - box.x0) * height / (box.y1 - box.y0)));
   const inner = resizePixels(source, box, innerWidth, height);
@@ -30,7 +51,10 @@ export function panelPixels(source, box, { invert = false, binary = false } = {}
   const data = new Uint8ClampedArray(width * outputHeight * 4).fill(255);
   let minimum = 255, maximum = 0;
   for (let i = 0; i < inner.data.length; i += 4) {
-    const gray = Math.round(inner.data[i] * .299 + inner.data[i + 1] * .587 + inner.data[i + 2] * .114);
+    const red = inner.data[i], green = inner.data[i + 1], blue = inner.data[i + 2];
+    const gray = redText
+      ? Math.max(0, 255 - 4 * Math.max(0, red - green))
+      : Math.round(red * .299 + green * .587 + blue * .114);
     inner.data[i] = gray;
     minimum = Math.min(minimum, gray); maximum = Math.max(maximum, gray);
   }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resizePixels, panelPixels } from '../dist/ocr-pixels.js';
+import { resizePixels, panelPixels, trimBalanceBorders } from '../dist/ocr-pixels.js';
 
 test('el escalado tiene resultados definidos por píxel sin depender del Canvas del navegador', () => {
   const source = { width: 2, height: 2, data: Uint8ClampedArray.from([0,0,0,255, 100,100,100,255, 200,200,200,255, 252,252,252,255]) };
@@ -20,4 +20,13 @@ test('los recortes mantienen el margen blanco y producen una variante binaria es
     assert.deepEqual([...result.data.slice(0, 4)], [255,255,255,255]);
     if (options.binary) assert.ok([...result.data].every(value => value === 0 || value === 255));
   }
+});
+
+test('retira los bordes de la casilla sin recortar horizontalmente el saldo', () => {
+  const width = 30, height = 10;
+  const data = new Uint8ClampedArray(width * height * 4).fill(255);
+  data.fill(80, 0, width * 8);
+  data.fill(80, width * 9 * 4);
+  const box = { x0: 0, y0: 0, x1: width, y1: height };
+  assert.deepEqual(trimBalanceBorders({ data, width, height }, box), { ...box, y0: 2, y1: 9 });
 });

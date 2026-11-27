@@ -20,6 +20,7 @@ test('exige que el importe completo se encuentre al extremo derecho del saldo', 
   const reading = (text, x0, x1) => ({ blocks: [{ paragraphs: [{ lines: [{ words: [{ text, bbox: { x0, x1, y0: 30, y1: 82 } }] }] }] }] });
   assert.ok(rightAlignedBalance(reading('99,958', 700, 1010), 1048, 112));
   assert.ok(!rightAlignedBalance(reading('2', 20, 50), 1048, 112));
+  assert.ok(!rightAlignedBalance(reading('99,958', 8, 316), 330, 112));
   assert.ok(!rightAlignedBalance(reading('99)', 700, 1010), 1048, 112));
   assert.ok(!rightAlignedBalance({ blocks: [] }, 1048, 112));
 });
@@ -50,4 +51,15 @@ test('usa la especialización sobre el nombre y excluye menciones en el chat', (
   ] }] }];
   assert.deepEqual(extractHudClass(reading, 'Mapler'), { job: 'Magician', specialization: 'Wizard (Fire/Poison)' });
   assert.equal(extractHudClass(reading, 'Otro'), null);
+});
+
+test('recupera el job avanzado con texto tenue y una lectura distinta de I y L en el nombre', () => {
+  const line = (texts, x0, y0) => ({ bbox: { x0, y0, x1: x0 + 160, y1: y0 + 20 }, words: texts.map(text => ({ text, confidence: 10 })) });
+  const reading = [{ paragraphs: [{ lines: [
+    line(['Assassin'], 200, 40),
+    line(['Wizard', '(Fire', 'Polson)'], 200, 100),
+    line(['MapIer'], 203, 122)
+  ] }] }];
+  assert.deepEqual(extractHudClass(reading, 'Mapler', 'Magician'), { job: 'Magician', specialization: 'Wizard (Fire/Poison)' });
+  assert.equal(extractHudClass(reading, 'Mapler', 'Thief'), null);
 });
