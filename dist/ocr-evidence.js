@@ -1,4 +1,14 @@
-import { parseOcrClass } from './jobs.js?v=0.5.0';
+import { parseOcrClass, validClass } from './jobs.js?v=0.6.0';
+
+export function mergeReadings(primary, fallback) {
+  const values = { ...fallback.values, ...primary.values };
+  const warnings = [...new Set([...(primary.warnings || []), ...(fallback.warnings || [])])];
+  if (values.specialization && !validClass(values.job, values.specialization)) {
+    delete values.specialization;
+    warnings.push('Revisa el job y la especialización en la imagen.');
+  }
+  return { values, warnings };
+}
 
 export function confirmedBalance(readings) {
   // Tesseract's confidence is poorly calibrated for the game's pixel font:

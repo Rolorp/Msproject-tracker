@@ -1,20 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { reviewGroup } from '../dist/ocr-review.js';
-import { extractHudClass, rightAlignedBalance, confirmedBalance } from '../dist/ocr-evidence.js';
+import { extractHudClass, rightAlignedBalance, confirmedBalance, mergeReadings } from '../dist/ocr-evidence.js';
 
-test('los atributos leídos no aparecen pendientes y las bases sin desglose son opcionales', () => {
-  const values = { strTotal: 4, dexTotal: 4, int: 204, intTotal: 222, apAvailable: 0 };
+test('los totales detectados se muestran leídos y los existentes se conservan', () => {
+  const values = { strTotal: 4, dexTotal: 4, intTotal: 222, apAvailable: 0 };
   assert.equal(reviewGroup('strTotal', values), 'detected');
   assert.equal(reviewGroup('dexTotal', values), 'detected');
-  assert.equal(reviewGroup('str', values), 'base');
-  assert.equal(reviewGroup('dex', values), 'base');
-  assert.equal(reviewGroup('int', values), 'detected');
+  assert.equal(reviewGroup('intTotal', values), 'detected');
   assert.equal(reviewGroup('apAvailable', values), 'detected');
   assert.equal(reviewGroup('mesos', values), 'missing');
   assert.equal(reviewGroup('mesos', values, { mesos: '0' }), 'preserved');
   assert.equal(reviewGroup('strTotal', {}, { strTotal: '4' }), 'preserved');
-  assert.equal(reviewGroup('str', {}, { strTotal: '4' }), 'base');
 });
 
 const blocks = lines => [{ paragraphs: [{ lines: lines.map(words => ({ words: words.map(text => ({ text, confidence: 90 })) })) }] }];

@@ -1,9 +1,9 @@
-import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSession, finishSession } from './session.js?v=0.5.0';
-import { saveProfile } from './profile.js?v=0.5.0';
-import { emptyState, restoreState } from './state.js?v=0.5.0';
-import { setupImageImport } from './ocr.js?v=0.5.0';
-import { ATTRIBUTES, CHARACTER_FIELDS, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js?v=0.5.0';
-import { JOBS, profileClass, classLabel } from './jobs.js?v=0.5.0';
+import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSession, finishSession } from './session.js?v=0.6.0';
+import { saveProfile } from './profile.js?v=0.6.0';
+import { emptyState, restoreState } from './state.js?v=0.6.0';
+import { setupImageImport } from './ocr.js?v=0.6.0';
+import { ATTRIBUTES, CHARACTER_FIELDS, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js?v=0.6.0';
+import { JOBS, profileClass, classLabel } from './jobs.js?v=0.6.0';
 
 const STORAGE_KEY = 'msproject-tracker.v1';
 const $ = id => document.getElementById(id);
@@ -161,8 +161,7 @@ function renderProfileSnapshot(profile) {
   const fields = [
     ['Personaje', `${profile.name} · ${classLabel(profile)} · Nv. ${profile.level}`],
     ['Contexto', [profile.region, profile.world, profile.environment, profile.patch || 'Parche sin registrar'].filter(Boolean).join(' · ')],
-    ['AP base', Object.entries(profile.attributes).map(([attribute, value]) => `${attribute.toUpperCase()} ${known(value)}`).join(' · ')],
-    ['AP mostrados', ATTRIBUTES.map(attribute => `${attribute.toUpperCase()} ${known(profile.attributeTotals?.[attribute])}`).join(' · ')],
+    ['Atributos', ATTRIBUTES.map(attribute => `${attribute.toUpperCase()} ${known(profile.attributeTotals?.[attribute])}`).join(' · ')],
     ['AP libres / Fame', `${known(profile.apAvailable)} / ${known(profile.fame)}`],
     ...PROGRESS_FIELDS.map(field => [field.label, known(profile.progress?.[field.key])]),
     ...COMBAT_FIELDS.map(field => [field.label, known(profile.combat[field.key])]),
@@ -440,7 +439,7 @@ function appendNumericFields(fields, containerId) {
 }
 
 appendNumericFields([...PROGRESS_FIELDS, ...CHARACTER_FIELDS.filter(field => ['fame', 'apAvailable'].includes(field.key))], 'profile-progress-fields');
-appendNumericFields(CHARACTER_FIELDS.filter(field => ATTRIBUTES.some(key => field.key === key || field.key === `${key}Total`)), 'profile-attribute-fields');
+appendNumericFields(CHARACTER_FIELDS.filter(field => ATTRIBUTES.some(key => field.key === `${key}Total`)), 'profile-attribute-fields');
 appendNumericFields(COMBAT_FIELDS.filter(field => field.key !== 'weaponAttack'), 'profile-combat-fields');
 setupImageImport();
 $('profile-form').elements.job.addEventListener('input', () => updateSpecializations($('profile-form').elements.specialization.value));

@@ -13,13 +13,13 @@ test('la EXP toma el valor actual y los máximos de HP y MP proceden de las frac
   assert.deepEqual(extractValues('HP 900\nMP 10').values, { currentHp: 900, currentMp: 10 });
 });
 
-test('separa atributos con bonus y usa como base los valores sin desglose', () => {
+test('lee solo el total de los atributos, haya o no desglose', () => {
   const { values, warnings } = extractValues('STR 120 (100+20)\nDEX 44 (40 + 4)\nBASE INT 10\nLUK 60');
-  assert.deepEqual(values, { str: 100, strTotal: 120, dex: 40, dexTotal: 44, int: 10, lukTotal: 60, luk: 60 });
+  assert.deepEqual(values, { strTotal: 120, dexTotal: 44, lukTotal: 60 });
   assert.equal(warnings.length, 0);
   assert.deepEqual(extractValues('STR 120 (90+20)').values, { strTotal: 120 });
   assert.deepEqual(extractValues('STR 4\nDEX 4\nINT 222 (204+18)\nLUK 40 (33+7)').values,
-    { strTotal: 4, str: 4, dexTotal: 4, dex: 4, intTotal: 222, int: 204, lukTotal: 40, luk: 33 });
+    { strTotal: 4, dexTotal: 4, intTotal: 222, lukTotal: 40 });
   assert.deepEqual(extractValues('STR 120 (100+\nDEX 44 (+4)').values, { strTotal: 120, dexTotal: 44 });
 });
 

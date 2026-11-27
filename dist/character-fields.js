@@ -33,9 +33,6 @@ export const CHARACTER_FIELDS = [
   { key: 'fame', label: 'Fame', min: -Number.MAX_SAFE_INTEGER },
   { key: 'apAvailable', label: 'AP libres' },
   ...PROGRESS_FIELDS,
-  ...ATTRIBUTES.flatMap(key => [
-    { key, label: `${key.toUpperCase()} base` },
-    { key: `${key}Total`, label: `${key.toUpperCase()} mostrado` }
-  ]),
+  ...ATTRIBUTES.map(key => ({ key: `${key}Total`, label: key.toUpperCase() })),
   ...COMBAT_FIELDS
 ];

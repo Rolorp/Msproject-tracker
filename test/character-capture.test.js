@@ -34,7 +34,7 @@ const expected = {
   name: 'TestMage', job: 'Magician', specialization: 'Wizard (Fire/Poison)', level: 45,
   currentHp: 611, maxHp: 1054, currentMp: 1923, maxMp: 1978,
   exp: 206845, expPercent: 44, fame: 25,
-  strTotal: 4, str: 4, dexTotal: 4, dex: 4, intTotal: 222, int: 204, lukTotal: 40, luk: 33,
+  strTotal: 4, dexTotal: 4, intTotal: 222, lukTotal: 40,
   apAvailable: 0, attackMin: 46, attackMax: 61, weaponDefense: 154,
   magicAttack: 198, magicDefense: 198, accuracy: 95, avoidability: 22,
   critRate: 10, critDamage: 126, speed: 100, jump: 100, mesos: 99958
@@ -44,12 +44,12 @@ test('interpreta la ficha y el inventario sin confundir rango, defensa, porcenta
   assert.deepEqual(extractValues(transcript).values, expected);
 });
 
-test('guarda todos los campos observados y conserva el desglose de AP', () => {
+test('guarda todos los campos observados y conserva únicamente los totales de AP', () => {
   const [profile] = saveProfile([], { ...extractValues(transcript).values, region: 'Global' }, 'profile', 1000);
   assert.equal(profile.name, 'TestMage');
-  assert.equal(profile.attributes.int, 204);
+  assert.equal(profile.attributes.int, null);
   assert.equal(profile.attributeTotals.int, 222);
-  assert.equal(profile.attributes.str, 4);
+  assert.equal(profile.attributes.str, null);
   assert.equal(profile.attributeTotals.str, 4);
   assert.equal(profile.apAvailable, 0);
   assert.equal(profile.fame, 25);
@@ -83,4 +83,11 @@ test('recompone etiquetas y valores que el OCR separó en bloques de columnas', 
   ];
   assert.match(layoutText(blocks), /HP 611\/1054/);
   assert.deepEqual(extractValues('', blocks).values, { currentHp: 611, maxHp: 1054, mesos: 99958 });
+});
+
+test('no concatena el nivel con cantidades del inventario situado a la derecha', () => {
+  const word = (text, x0, x1) => ({ text, bbox: { x0, x1, y0: 100, y1: 120 } });
+  const blocks = [{ paragraphs: [{ lines: [{ words: [word('LEVEL', 50, 125), word('45', 285, 315), word('12', 1200, 1225), word('13', 1280, 1305)] }] }] }];
+  assert.match(layoutText(blocks), /LEVEL 45 \| 12/);
+  assert.equal(extractValues('', blocks).values.level, 45);
 });

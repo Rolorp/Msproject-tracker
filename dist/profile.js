@@ -1,6 +1,6 @@
-import { integer } from './session.js?v=0.5.0';
-import { ATTRIBUTES, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js?v=0.5.0';
-import { validClass } from './jobs.js?v=0.5.0';
+import { integer } from './session.js?v=0.6.0';
+import { ATTRIBUTES, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js?v=0.6.0';
+import { validClass } from './jobs.js?v=0.6.0';
 
 function optionalInteger(value, label) {
   return value === null || value === undefined || String(value).trim() === ''
@@ -48,8 +48,9 @@ export function saveProfile(profiles, data, id, now, expectedRevision = null) {
   const attributes = {};
   const attributeTotals = {};
   for (const attribute of ATTRIBUTES) {
-    attributes[attribute] = optionalInteger(data[attribute], attribute.toUpperCase());
-    attributeTotals[attribute] = optionalInteger(data[`${attribute}Total`], `${attribute.toUpperCase()} mostrado`);
+    // Preserve legacy base values without exposing or rewriting them as totals.
+    attributes[attribute] = previous?.attributes?.[attribute] ?? null;
+    attributeTotals[attribute] = optionalInteger(data[`${attribute}Total`], attribute.toUpperCase());
   }
   const combat = {};
   for (const field of COMBAT_FIELDS) combat[field.key] = optionalValue(data[field.key], field);

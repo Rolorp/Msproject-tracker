@@ -1,8 +1,8 @@
-import { detectPanelRegions, resourceParts, mesosLabelRegions } from './ocr-panels.js?v=0.5.0';
-import { extractValues } from './ocr-parser.js?v=0.5.0';
-import { extractHudClass, rightAlignedBalance, confirmedBalance } from './ocr-evidence.js?v=0.5.0';
-import { resizePixels, panelPixels } from './ocr-pixels.js?v=0.5.0';
-import { parseOcrClass } from './jobs.js?v=0.5.0';
+import { detectPanelRegions, resourceParts, mesosLabelRegions } from './ocr-panels.js?v=0.6.0';
+import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.6.0';
+import { extractHudClass, rightAlignedBalance, confirmedBalance, mergeReadings } from './ocr-evidence.js?v=0.6.0';
+import { resizePixels, panelPixels } from './ocr-pixels.js?v=0.6.0';
+import { parseOcrClass } from './jobs.js?v=0.6.0';
 
 const balanceLabel = text => /^MES[O0][S5]?$/.test(text.toUpperCase().replace(/[^A-Z0-9]/g, ''));
 
@@ -96,83 +96,107 @@ export async function recognizeCharacterImage(worker, image, progress, cancelled
   for (let index = 0; index < regions.length; index += 1) {
     if (cancelled()) return null;
     const region = regions[index];
-    const numeric = region.kind === 'number' || region.kind === 'single-number';
-    progress(`${region.label} (${index + 1}/${regions.length})`);
-    await worker.setParameters({
-      tessedit_pageseg_mode: region.kind === 'job' ? '6' : '7',
-      tessedit_char_whitelist: numeric ? '0123456789.,/+-~%() ' : ''
-    });
-    let text;
-    if (region.label === 'MESOS') {
-      await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: '' });
-      const label = region.labelBox && await worker.recognize(panelImage(source, originalBox(image, analysis, region.labelBox), { invert: true }));
-      text = await readBalance(worker, source, originalBox(image, analysis, region));
-      // A white-on-blue label may be unreadable. The framed balance still
-      // requires two complete readings aligned to its right edge.
-      if (label && !balanceLabel(label.data.text) && !text) progress('Saldo sin confirmar');
-    } else if (region.kind === 'job') {
-      // The smaller colored specialization line is often omitted by block OCR.
-      await worker.setParameters({ tessedit_pageseg_mode: '6', tessedit_char_whitelist: '' });
-      const middle = region.y0 + (region.y1 - region.y0) * .55;
-      const main = await worker.recognize(panelImage(source, originalBox(image, analysis, region)));
-      await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: '' });
-      const specialization = await worker.recognize(panelImage(source, originalBox(image, analysis, { ...region, y0: middle })));
-      text = `${main.data.text.trim().split('\n')[0]}\nSPECIALIZATION ${specialization.data.text.trim()}`;
-      if (!extractValues(`JOB ${text}`).values.specialization) {
-        for (const fraction of [.45, .5, .6]) {
-          const box = originalBox(image, analysis, { ...region, y0: region.y0 + (region.y1 - region.y0) * fraction });
-          const retry = await worker.recognize(panelImage(source, box, { binary: true }));
-          const candidate = `${main.data.text.trim().split('\n')[0]}\nSPECIALIZATION ${retry.data.text.trim()}`;
-          if (extractValues(`JOB ${candidate}`).values.specialization) { text = candidate; break; }
+    try {
+      const numeric = region.kind === 'number' || region.kind === 'single-number';
+      progress(`${region.label} (${index + 1}/${regions.length})`);
+      await worker.setParameters({
+        tessedit_pageseg_mode: region.kind === 'job' ? '6' : '7',
+        tessedit_char_whitelist: numeric ? '0123456789.,/+-~%() ' : ''
+      });
+      let text;
+      if (region.label === 'MESOS') {
+        await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: '' });
+        const label = region.labelBox && await worker.recognize(panelImage(source, originalBox(image, analysis, region.labelBox), { invert: true }));
+        text = await readBalance(worker, source, originalBox(image, analysis, region));
+        // A white-on-blue label may be unreadable. The framed balance still
+        // requires two complete readings aligned to its right edge.
+        if (label && !balanceLabel(label.data.text) && !text) progress('Saldo sin confirmar');
+      } else if (region.kind === 'job') {
+        // The smaller colored specialization line is often omitted by block OCR.
+        await worker.setParameters({ tessedit_pageseg_mode: '6', tessedit_char_whitelist: '' });
+        const middle = region.y0 + (region.y1 - region.y0) * .55;
+        const main = await worker.recognize(panelImage(source, originalBox(image, analysis, region)));
+        await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: '' });
+        const specialization = await worker.recognize(panelImage(source, originalBox(image, analysis, { ...region, y0: middle })));
+        text = `${main.data.text.trim().split('\n')[0]}\nSPECIALIZATION ${specialization.data.text.trim()}`;
+        if (!extractValues(`JOB ${text}`).values.specialization) {
+          for (const fraction of [.45, .5, .6]) {
+            const box = originalBox(image, analysis, { ...region, y0: region.y0 + (region.y1 - region.y0) * fraction });
+            const retry = await worker.recognize(panelImage(source, box, { binary: true }));
+            const candidate = `${main.data.text.trim().split('\n')[0]}\nSPECIALIZATION ${retry.data.text.trim()}`;
+            if (extractValues(`JOB ${candidate}`).values.specialization) { text = candidate; break; }
+          }
+        }
+      } else if (region.label === 'HP' || region.label === 'MP') {
+        const parts = resourceParts(pixels, region);
+        const values = [];
+        for (const part of parts) {
+          const { data } = await worker.recognize(panelImage(analysis, part));
+          values.push(data.text.trim());
+        }
+        text = values.length === 2 && values.every(value => /^\d[\d., ]*$/.test(value)) ? values.join('/') : '';
+        if (!text) {
+          const { data } = await worker.recognize(panelImage(analysis, region));
+          const ratio = data.text.trim().replace(/^[^\d]+/, '');
+          if (/^\d[\d., ]*\/\d[\d., ]*$/.test(ratio)) text = ratio;
+        }
+      } else {
+        const regionSource = numeric ? analysis : source;
+        const box = numeric ? region : originalBox(image, analysis, region);
+        const { data } = await worker.recognize(panelImage(regionSource, box));
+        text = numeric ? data.text.trim().replace(/^[^\d.+-]+/, '') : data.text.trim();
+      }
+      lines.push(`${region.label} ${text}`);
+    } catch {
+      if (cancelled()) return null;
+      // A bad crop must not discard the fields read from the other windows.
+    }
+  }
+  let result = extractValues(lines.join('\n'));
+  if (!result.values.specialization && image.naturalWidth && !cancelled()) {
+    try {
+      progress('Especialización en la barra inferior');
+      const hudWidth = Math.round(source.width * .6), hudHeight = Math.round(source.height * .4);
+      const hud = pixelCanvas(resizePixels(source, { x0: 0, y0: source.height - hudHeight, x1: hudWidth, y1: source.height }, hudWidth, hudHeight));
+      await worker.setParameters({ tessedit_pageseg_mode: '11', tessedit_char_whitelist: '' });
+      const reading = await worker.recognize(hud, {}, { text: true, blocks: true });
+      const hudClass = extractHudClass(reading.data.blocks, extractValues(lines.join('\n')).values.name);
+      if (hudClass) {
+        const text = `JOB ${hudClass.job}\nSPECIALIZATION ${hudClass.specialization}`;
+        lines.push(text);
+        result = mergeReadings(result, extractValues(text));
+      }
+    } catch {
+      if (cancelled()) return null;
+    }
+  }
+  const missingFields = OCR_FIELDS.filter(field => field.key !== 'weaponAttack').some(field => result.values[field.key] === undefined);
+  if (missingFields && !cancelled()) {
+    try {
+      progress('Buscando etiquetas en toda la imagen');
+      await worker.setParameters({ tessedit_pageseg_mode: '11', tessedit_char_whitelist: '' });
+      const prepared = prepareImage(source);
+      const general = await worker.recognize(prepared, {}, { text: true, blocks: true });
+      const parsed = extractValues(general.data.text, general.data.blocks);
+      lines.push(`# Lectura general\n${parsed.text}`);
+      result = mergeReadings(result, parsed);
+      const generalMesos = parsed.values.mesos;
+      if (generalMesos !== undefined) lines.push(`MESOS ${generalMesos}`);
+      if (generalMesos === undefined && result.values.mesos === undefined) {
+        for (const region of mesosLabelRegions(general.data.blocks, prepared.width, prepared.height)) {
+          if (cancelled()) return null;
+          const preparedPixels = prepared.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, prepared.width, prepared.height);
+          const value = await readBalance(worker, preparedPixels, region);
+          if (value) {
+            const text = `MESOS ${value}`;
+            lines.push(text);
+            result = mergeReadings(result, extractValues(text));
+          }
         }
       }
-    } else if (region.label === 'HP' || region.label === 'MP') {
-      const parts = resourceParts(pixels, region);
-      const values = [];
-      for (const part of parts) {
-        const { data } = await worker.recognize(panelImage(analysis, part));
-        values.push(data.text.trim());
-      }
-      text = values.length === 2 && values.every(value => /^\d[\d., ]*$/.test(value)) ? values.join('/') : '';
-      if (!text) {
-        const { data } = await worker.recognize(panelImage(analysis, region));
-        const ratio = data.text.trim().replace(/^[^\d]+/, '');
-        if (/^\d[\d., ]*\/\d[\d., ]*$/.test(ratio)) text = ratio;
-      }
-    } else {
-      const regionSource = numeric ? analysis : source;
-      const box = numeric ? region : originalBox(image, analysis, region);
-      const { data } = await worker.recognize(panelImage(regionSource, box));
-      text = numeric ? data.text.trim().replace(/^[^\d.+-]+/, '') : data.text.trim();
-    }
-    lines.push(`${region.label} ${text}`);
-  }
-  if (image.naturalWidth && !cancelled()) {
-    progress('Especialización en la barra inferior');
-    const hudWidth = Math.round(source.width * .6), hudHeight = Math.round(source.height * .4);
-    const hud = pixelCanvas(resizePixels(source, { x0: 0, y0: source.height - hudHeight, x1: hudWidth, y1: source.height }, hudWidth, hudHeight));
-    await worker.setParameters({ tessedit_pageseg_mode: '11', tessedit_char_whitelist: '' });
-    const reading = await worker.recognize(hud, {}, { text: true, blocks: true });
-    const hudClass = extractHudClass(reading.data.blocks, extractValues(lines.join('\n')).values.name);
-    if (hudClass) lines.push(`JOB ${hudClass.job}\nSPECIALIZATION ${hudClass.specialization}`);
-  }
-  if (extractValues(lines.join('\n')).values.mesos === undefined && !cancelled()) {
-    progress('Buscando saldo del inventario');
-    await worker.setParameters({ tessedit_pageseg_mode: '11', tessedit_char_whitelist: '' });
-    const prepared = prepareImage(source);
-    const general = await worker.recognize(prepared, {}, { text: true, blocks: true });
-    const parsed = extractValues(general.data.text, general.data.blocks);
-    if (!regions.length) lines.push(parsed.text);
-    const generalMesos = parsed.values.mesos;
-    if (generalMesos !== undefined) lines.push(`MESOS ${generalMesos}`);
-    else {
-      for (const region of mesosLabelRegions(general.data.blocks, prepared.width, prepared.height)) {
-        if (cancelled()) return null;
-        const preparedPixels = prepared.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, prepared.width, prepared.height);
-        const value = await readBalance(worker, preparedPixels, region);
-        if (value) lines.push(`MESOS ${value}`);
-      }
+    } catch {
+      if (cancelled()) return null;
     }
   }
-  return { text: lines.join('\n'), blocks: null };
+  return { ...result, text: lines.join('\n'), blocks: null };
 }

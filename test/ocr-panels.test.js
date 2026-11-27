@@ -2,30 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { detectPanelRegions, resourceParts, mesosLabelRegions } from '../dist/ocr-panels.js';
 
-function panelImage({ pinkCount = 7, blueCount = 10, offset = 0 } = {}) {
-  const width = 1000, height = 800;
-  const data = new Uint8ClampedArray(width * height * 4).fill(255);
-  function rectangle(x, y, w, h, color) {
-    for (let row = y; row < y + h; row += 1) {
-      for (let col = x + offset; col < x + offset + w; col += 1) data.set([...color, 255], (row * width + col) * 4);
-    }
-  }
-  let y = 80;
-  for (let index = 0; index < pinkCount; index += 1) {
-    const h = index === 1 ? 36 : 20;
-    rectangle(280, y, 70, h, [195, 70, 110]);
-    y += h + 4;
-  }
-  for (let index = 0; index < 4; index += 1) rectangle(280, 280 + index * 24, 70, 20, [180, 190, 50]);
-  for (let index = 0; index < blueCount; index += 1) rectangle(550, 140 + index * 24, 90, 20, [90, 145, 190]);
-  rectangle(30, 390, 300, 45, [130, 165, 195]);
-  rectangle(48, 402, 14, 14, [230, 190, 20]);
-  rectangle(73, 398, 194, 26, [40, 40, 40]);
-  rectangle(75, 400, 190, 22, [250, 250, 245]);
-  rectangle(390, 390, 46, 26, [40, 40, 40]);
-  rectangle(392, 392, 42, 22, [250, 250, 245]);
-  return { data, width, height };
-}
+import { panelImage } from './helpers/panel-image.js';
 
 test('identifica filas por estructura de paneles y la casilla de mesos', () => {
   const regions = detectPanelRegions(panelImage());
@@ -41,6 +18,23 @@ test('la detección sigue los paneles cuando se desplazan', () => {
   const shifted = detectPanelRegions(panelImage({ offset: 37 }));
   assert.equal(shifted.length, original.length);
   assert.ok(shifted.every((region, index) => Math.abs(region.x0 - original[index].x0 - 37) < 2));
+});
+
+test('el inventario puede estar a la derecha de la ficha y de sus detalles', () => {
+  const original = panelImage();
+  const width = 1400;
+  const moved = { width, height: original.height, data: new Uint8ClampedArray(width * original.height * 4).fill(255) };
+  for (let y = 0; y < original.height; y += 1) for (let x = 0; x < original.width; x += 1) {
+    const inventory = x >= 30 && x < 330 && y >= 390 && y < 435;
+    if (!inventory) moved.data.set(original.data.subarray((y * original.width + x) * 4, (y * original.width + x + 1) * 4), (y * width + x) * 4);
+  }
+  for (let y = 390; y < 435; y += 1) for (let x = 30; x < 330; x += 1) {
+    moved.data.set(original.data.subarray((y * original.width + x) * 4, (y * original.width + x + 1) * 4), (y * width + x + 850) * 4);
+  }
+  const regions = detectPanelRegions(moved);
+  assert.ok(regions.some(region => region.label === 'NAME' && region.x0 < 500));
+  assert.ok(regions.some(region => region.label === 'ATTACK'));
+  assert.ok(regions.some(region => region.label === 'MESOS' && region.x0 > 900));
 });
 
 test('una ficha o unos detalles incompletos conservan los campos sin identificación', () => {

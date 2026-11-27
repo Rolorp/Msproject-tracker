@@ -7,7 +7,7 @@ import { createSession, stopSession, finishSession } from '../dist/session.js';
 // Synthetic character data checks storage behavior, not Classic World rules.
 const data = {
   name: 'Mapler', job: 'Thief', specialization: 'Bandit', level: '32', region: 'Global',
-  str: '4', dex: '', int: '0', luk: '120',
+  strTotal: '4', dexTotal: '', intTotal: '0', lukTotal: '120',
   spPools: [{ name: 'Primer avance', available: '0' }, { name: 'Segundo avance', available: '' }],
   skills: [{ name: 'Habilidad de prueba', rank: '3', pool: 'Segundo avance' }],
   equipment: 'Arma de prueba'
@@ -15,8 +15,8 @@ const data = {
 
 test('conserva valores desconocidos y distingue SP libres de distintos avances', () => {
   const [profile] = saveProfile([], data, 'profile-1', 1000);
-  assert.equal(profile.attributes.dex, null);
-  assert.equal(profile.attributes.int, 0);
+  assert.equal(profile.attributeTotals.dex, null);
+  assert.equal(profile.attributeTotals.int, 0);
   assert.equal(profile.combat.weaponAttack, null);
   assert.deepEqual(profile.spPools.map(pool => pool.available), [0, null]);
   assert.equal(profile.skills[0].rank, 3);
@@ -27,7 +27,7 @@ test('conserva valores desconocidos y distingue SP libres de distintos avances',
 test('rechaza valores incompletos, negativos, fraccionarios y duplicados', () => {
   assert.throws(() => saveProfile([], { ...data, name: '' }, 'x', 1000));
   assert.throws(() => saveProfile([], { ...data, job: '' }, 'x', 1000));
-  assert.throws(() => saveProfile([], { ...data, str: -1 }, 'x', 1000));
+  assert.throws(() => saveProfile([], { ...data, strTotal: -1 }, 'x', 1000));
   assert.throws(() => saveProfile([], { ...data, maxHp: 1.5 }, 'x', 1000));
   assert.throws(() => saveProfile([], { ...data, spPools: [{ name: 'A', available: 0 }, { name: 'a', available: 1 }] }, 'x', 1000));
   assert.throws(() => saveProfile([], { ...data, skills: [data.skills[0], data.skills[0]] }, 'x', 1000));
@@ -45,6 +45,15 @@ test('editar conserva identidad y fecha de creación, y detecta escrituras desac
   assert.equal(updated[0].revision, 2);
   assert.equal(original[0].level, 32);
   assert.throws(() => saveProfile(updated, data, 'profile-1', 3000, 1));
+});
+
+test('editar conserva las bases antiguas sin mostrarlas ni sustituir los totales', () => {
+  const [original] = saveProfile([], data, 'profile-1', 1000);
+  original.attributes = { str: 4, dex: 4, int: 204, luk: 33 };
+  const [updated] = saveProfile([original], { ...data, intTotal: 222, lukTotal: 40 }, 'profile-1', 2000, 1);
+  assert.equal(updated.attributeTotals.int, 222);
+  assert.equal(updated.attributeTotals.luk, 40);
+  assert.deepEqual(updated.attributes, original.attributes);
 });
 
 test('la sesión conserva una copia independiente del perfil al editarlo o mutarlo', () => {
