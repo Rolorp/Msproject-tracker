@@ -454,6 +454,14 @@ footer {
   font-size: 1rem;
 }
 
+#capture-character {
+  margin-bottom: 1rem;
+}
+
+#ocr-missing {
+  margin: 1rem 0;
+}
+
 .profile-fields {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

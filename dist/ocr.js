@@ -1,4 +1,5 @@
 import { extractValues, OCR_FIELDS } from './ocr-parser.js';
+import { prepareImage } from './ocr-image.js';
 
 function initializeWorker(tesseract, options) {
   return new Promise((resolve, reject) => {
@@ -26,6 +27,8 @@ export function setupImageImport() {
   const status = document.getElementById('ocr-status');
   const rawText = document.getElementById('ocr-text');
   const candidates = document.getElementById('ocr-candidates');
+  const missing = document.getElementById('ocr-missing-fields');
+  const missingPanel = document.getElementById('ocr-missing');
   const readButton = document.getElementById('ocr-read');
   const extractButton = document.getElementById('ocr-extract');
   const applyButton = document.getElementById('ocr-apply');
@@ -47,41 +50,50 @@ export function setupImageImport() {
   function showCandidates() {
     const result = extractValues(rawText.value);
     candidates.replaceChildren();
+    missing.replaceChildren();
     let count = 0;
     for (const field of OCR_FIELDS) {
-      const control = targetForm.elements.namedItem(field.key);
-      if (!control || control.readOnly || result.values[field.key] === undefined) continue;
+      const key = field.key === 'name' && targetForm.id === 'start-form' ? 'character' : field.key;
+      const control = targetForm.elements.namedItem(key);
+      if (!control || control.readOnly) continue;
+      const detected = result.values[field.key] !== undefined;
       const row = document.createElement('div');
       row.className = 'ocr-candidate';
       const selectionLabel = document.createElement('label');
       selectionLabel.className = 'ocr-selection';
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
-      checkbox.name = field.key;
+      checkbox.name = key;
+      checkbox.checked = detected;
       selectionLabel.append(checkbox, `Aplicar ${field.label}`);
       const valueLabel = document.createElement('label');
       valueLabel.textContent = field.label;
       const input = document.createElement('input');
-      input.type = 'number';
-      input.step = '1';
-      input.min = control.min || field.min;
+      input.type = field.type === 'text' ? 'text' : 'number';
+      input.step = field.type === 'decimal' ? 'any' : '1';
+      input.min = control.min || field.min || 0;
       input.max = Number.MAX_SAFE_INTEGER;
-      input.value = result.values[field.key];
-      input.disabled = true;
+      input.value = result.values[field.key] ?? '';
+      input.disabled = !detected;
+      input.required = detected;
       checkbox.addEventListener('change', () => {
         input.disabled = !checkbox.checked;
         input.required = checkbox.checked;
       });
       valueLabel.append(input);
       row.append(selectionLabel, valueLabel);
-      candidates.append(row);
-      count += 1;
+      if (detected) {
+        candidates.append(row);
+        count += 1;
+      } else missing.append(row);
     }
+    missingPanel.hidden = missing.children.length === 0;
+    missingPanel.open = count === 0;
     const description = count
-      ? 'Marca los campos que quieres aplicar y corrige sus valores antes de confirmar.'
-      : 'No se detectaron valores para este formulario. Puedes corregir el texto leído y volver a extraerlos.';
+      ? `Se leyeron ${count} campos. Revisa los datos y desmarca los que quieras omitir antes de confirmar.`
+      : 'No se detectaron valores para este formulario. Revisa el texto o completa los campos pendientes.';
     status.textContent = [description, ...result.warnings].join(' ');
-    applyButton.disabled = count === 0;
+    applyButton.disabled = candidates.children.length + missing.children.length === 0;
   }
 
   document.querySelectorAll('[data-ocr-form]').forEach(button => {
@@ -89,6 +101,11 @@ export function setupImageImport() {
       targetForm = document.getElementById(button.dataset.ocrForm);
       rawText.value = '';
       candidates.replaceChildren();
+      missing.replaceChildren();
+      missingPanel.hidden = true;
+      document.getElementById('ocr-purpose').textContent = targetForm.id === 'profile-form'
+        ? 'Lee una captura general con CHARACTER STAT, sus detalles e inventario visibles. Se propondrán todos los datos del personaje para revisarlos.'
+        : 'Esta lectura rellena los valores de la sesión. Para guardar AP y combate, usa Capturar personaje desde una foto.';
       status.textContent = 'Selecciona una imagen con las etiquetas y sus valores visibles.';
       setBusy(false);
       applyButton.disabled = true;
@@ -110,6 +127,8 @@ export function setupImageImport() {
     selectedFile = null;
     rawText.value = '';
     candidates.replaceChildren();
+    missing.replaceChildren();
+    missingPanel.hidden = true;
   });
 
   async function selectImage(event) {
@@ -121,6 +140,8 @@ export function setupImageImport() {
     const otherInput = input === fileInput ? cameraInput : fileInput;
     otherInput.value = '';
     candidates.replaceChildren();
+    missing.replaceChildren();
+    missingPanel.hidden = true;
     rawText.value = '';
     applyButton.disabled = true;
     if (imageUrl) URL.revokeObjectURL(imageUrl);
@@ -179,10 +200,13 @@ export function setupImageImport() {
       });
       if (currentGeneration !== generation) return;
       worker = activeWorker;
-      await activeWorker.setParameters({ tessedit_pageseg_mode: '11' });
-      const { data } = await activeWorker.recognize(file);
+      await activeWorker.setParameters({ tessedit_pageseg_mode: '11', preserve_interword_spaces: '1' });
+      await preview.decode();
       if (currentGeneration !== generation) return;
-      rawText.value = data.text;
+      const image = prepareImage(preview);
+      const { data } = await activeWorker.recognize(image, {}, { text: true, blocks: true });
+      if (currentGeneration !== generation) return;
+      rawText.value = extractValues(data.text, data.blocks).text;
       setBusy(false);
       showCandidates();
     } catch {
@@ -204,7 +228,7 @@ export function setupImageImport() {
       status.textContent = 'El formulario cambió mientras leías la imagen. Ciérrala y vuelve a abrirlo.';
       return;
     }
-    const selected = [...candidates.children].filter(row => row.querySelector('[type="checkbox"]').checked);
+    const selected = [...candidates.children, ...missing.children].filter(row => row.querySelector('[type="checkbox"]').checked);
     if (!selected.length) {
       status.textContent = 'Marca al menos un campo para aplicarlo.';
       return;
@@ -220,8 +244,10 @@ export function setupImageImport() {
     for (const row of selected) {
       const key = row.querySelector('[type="checkbox"]').name;
       const control = targetForm.elements.namedItem(key);
-      control.value = row.querySelector('[type="number"]').value;
+      control.value = row.querySelector('input:not([type="checkbox"])').value;
       control.dispatchEvent(new Event('input', { bubbles: true }));
+      const section = control.closest('details.profile-section');
+      if (section) section.open = true;
     }
     dialog.close();
     targetForm.querySelector('button[type="submit"]').focus();

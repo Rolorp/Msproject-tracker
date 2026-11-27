@@ -13,19 +13,30 @@ export function createSession(data, now, id, profile = null) {
   if (profile && (profile.level !== level || profile.name !== character)) {
     throw new Error('Actualiza el nombre y nivel del perfil antes de iniciar la sesión.');
   }
+  const initialExp = integer(data.exp, 'la EXP inicial');
+  const initialMesos = integer(data.mesos, 'los mesos iniciales');
+  const characterSnapshot = profile ? JSON.parse(JSON.stringify(profile)) : null;
+  if (characterSnapshot) {
+    characterSnapshot.progress = {
+      ...profile.progress,
+      exp: initialExp,
+      mesos: initialMesos,
+      expPercent: profile.progress?.exp === initialExp ? profile.progress.expPercent : null
+    };
+  }
   return {
     id,
     character,
     map: String(data.map || '').trim(),
     initialLevel: level,
-    initialExp: integer(data.exp, 'la EXP inicial'),
-    initialMesos: integer(data.mesos, 'los mesos iniciales'),
+    initialExp,
+    initialMesos,
     startedAt: now,
     resumedAt: now,
     activeMs: 0,
     status: 'running',
     profileId: profile?.id ?? null,
-    characterSnapshot: profile ? JSON.parse(JSON.stringify(profile)) : null
+    characterSnapshot
   };
 }
 

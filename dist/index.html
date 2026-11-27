@@ -18,6 +18,7 @@
     <div class="intro"><p class="eyebrow">TU TIEMPO EN MAPLE</p><h1>Cada sesión cuenta.</h1><p>Registra tu progreso y encuentra tu ritmo.</p></div>
     <p id="message" class="message" role="status" hidden></p>
     <section class="profiles" aria-label="Perfiles de personaje">
+      <button id="capture-character" type="button">Capturar personaje desde una foto</button>
       <details id="profiles-panel">
         <summary>Perfiles de personaje <span id="profile-count"></span></summary>
         <p class="form-hint">Registra el estado de tu personaje para asociarlo a tus sesiones. Los datos son manuales y la validación de reglas de SP está pendiente.</p>
@@ -34,23 +35,17 @@
             <label>Entorno<select name="environment"><option value="live">Live</option><option value="test">Test</option></select></label>
             <label>Parche observado<input name="patch" maxlength="80" placeholder="Opcional"></label>
           </div>
-          <details class="profile-section"><summary>AP y valores de combate</summary>
-            <p class="form-hint">Introduce los atributos base y los valores totales de combate mostrados en el juego. Deja vacíos los valores desconocidos.</p>
-            <div class="profile-fields">
-              <label>STR base<input name="str" type="number" min="0" step="1" inputmode="numeric"></label>
-              <label>DEX base<input name="dex" type="number" min="0" step="1" inputmode="numeric"></label>
-              <label>INT base<input name="int" type="number" min="0" step="1" inputmode="numeric"></label>
-              <label>LUK base<input name="luk" type="number" min="0" step="1" inputmode="numeric"></label>
-              <label>HP máximo<input name="maxHp" type="number" min="0" step="1" inputmode="numeric"></label>
-              <label>MP máximo<input name="maxMp" type="number" min="0" step="1" inputmode="numeric"></label>
-              <label>Weapon Attack total<input name="weaponAttack" type="number" min="0" step="1" inputmode="numeric"></label>
-              <label>Magic Attack total<input name="magicAttack" type="number" min="0" step="1" inputmode="numeric"></label>
-              <label>Accuracy total<input name="accuracy" type="number" min="0" step="1" inputmode="numeric"></label>
-              <label>Avoidability total<input name="avoidability" type="number" min="0" step="1" inputmode="numeric"></label>
-            </div>
+          <div id="profile-progress-fields" class="profile-fields"></div>
+          <details class="profile-section"><summary>Atributos AP</summary>
+            <p class="form-hint">Guarda el valor mostrado y la base cuando aparezca el desglose. Un campo vacío significa desconocido.</p>
+            <div id="profile-attribute-fields" class="profile-fields"></div>
+          </details>
+          <details class="profile-section"><summary>HP, MP y valores de combate</summary>
+            <div id="profile-combat-fields" class="profile-fields"></div>
           </details>
           <details class="profile-section"><summary>Equipo</summary>
             <label>Objetos y atributos relevantes<textarea name="equipment" rows="4" maxlength="4000" placeholder="Arma, velocidad, equipo y bonificaciones que quieras registrar"></textarea></label>
+            <label>Weapon Attack del arma (opcional)<input name="weaponAttack" type="number" min="0" step="1" inputmode="numeric"></label>
           </details>
           <details class="profile-section"><summary>SP libres por avance</summary>
             <p class="form-hint">Registra cada avance por separado. Un campo de puntos vacío significa desconocido.</p>
@@ -135,7 +130,7 @@
   </main>
   <dialog id="ocr-dialog" aria-labelledby="ocr-heading">
     <div class="section-heading"><h2 id="ocr-heading">Leer valores de una imagen</h2><button id="ocr-close" type="button" class="secondary">Cerrar</button></div>
-    <p class="form-hint">La lectura se realiza en este navegador. Revisa los números antes de aplicarlos. Una captura recortada y nítida facilita la lectura.</p>
+    <p id="ocr-purpose" class="form-hint">Puedes usar una captura general con CHARACTER STAT, sus detalles e inventario visibles. Revisa los datos antes de aplicarlos.</p>
     <label>Captura o foto (PNG, JPG o WebP, hasta 15 MB)<input id="ocr-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
     <button id="ocr-open-camera" class="secondary image-import" type="button">Tomar foto</button>
     <input id="ocr-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden>
@@ -143,8 +138,8 @@
     <button id="ocr-read" class="image-import" type="button">Leer imagen</button>
     <p id="ocr-status" role="status" class="form-hint"></p>
     <details><summary>Revisar el texto leído</summary><label>Texto detectado<textarea id="ocr-text" rows="6" spellcheck="false"></textarea></label><button id="ocr-extract" class="secondary image-import" type="button">Extraer valores del texto</button></details>
-    <form id="ocr-review"><div id="ocr-candidates"></div><button id="ocr-apply" type="submit" disabled>Aplicar valores revisados</button></form>
+    <form id="ocr-review"><div id="ocr-candidates"></div><details id="ocr-missing" hidden><summary>Campos pendientes de lectura</summary><div id="ocr-missing-fields"></div></details><button id="ocr-apply" type="submit" disabled>Aplicar datos revisados</button></form>
   </dialog>
-  <footer>MSproject tracker <span>v0.3.1 · Proyecto de fans independiente</span></footer>
+  <footer>MSproject tracker <span>v0.4 · Proyecto de fans independiente</span></footer>
 </body>
 </html>
