@@ -2,6 +2,7 @@ import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSes
 import { saveProfile } from './profile.js';
 import { emptyState, restoreState } from './state.js';
 import { setupImageImport } from './ocr.js';
+import { ATTRIBUTES, CHARACTER_FIELDS, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js';
 
 const STORAGE_KEY = 'msproject-tracker.v1';
 const $ = id => document.getElementById(id);
@@ -76,7 +77,8 @@ function editProfile(profile = null) {
   $('sp-pools').replaceChildren();
   $('profile-skills').replaceChildren();
   if (profile) {
-    const fields = { ...profile, ...profile.attributes, ...profile.combat };
+    const totals = Object.fromEntries(Object.entries(profile.attributeTotals || {}).map(([key, value]) => [`${key}Total`, value]));
+    const fields = { ...profile, ...profile.attributes, ...profile.combat, ...profile.progress, ...totals };
     for (const control of form.elements) {
       if (control.name) control.value = fields[control.name] ?? '';
     }
@@ -91,7 +93,7 @@ function editProfile(profile = null) {
   form.elements.name.focus();
 }
 
-function applySelectedProfile() {
+function applySelectedProfile(fillProgress = false) {
   const profile = state.profiles.find(item => item.id === $('session-profile').value);
   const form = $('start-form');
   form.elements.character.readOnly = !!profile;
@@ -99,6 +101,10 @@ function applySelectedProfile() {
   if (profile) {
     form.elements.character.value = profile.name;
     form.elements.level.value = profile.level;
+    if (fillProgress) {
+      form.elements.exp.value = profile.progress?.exp ?? '';
+      form.elements.mesos.value = profile.progress?.mesos ?? '';
+    }
   }
 }
 
@@ -140,14 +146,16 @@ function renderProfileSnapshot(profile) {
   const list = $('result-profile-values');
   list.replaceChildren();
   if (!profile) return;
-  const known = value => value === null ? 'desconocido' : numberFormat.format(value);
+  const statFormat = new Intl.NumberFormat('es', { maximumFractionDigits: 4 });
+  const known = value => value == null ? 'desconocido' : statFormat.format(value);
   const fields = [
     ['Personaje', `${profile.name} · ${profile.job} · Nv. ${profile.level}`],
     ['Contexto', [profile.region, profile.world, profile.environment, profile.patch || 'Parche sin registrar'].filter(Boolean).join(' · ')],
     ['AP base', Object.entries(profile.attributes).map(([attribute, value]) => `${attribute.toUpperCase()} ${known(value)}`).join(' · ')],
-    ['HP / MP máximos', `${known(profile.combat.maxHp)} / ${known(profile.combat.maxMp)}`],
-    ['Weapon Attack / Magic Attack', `${known(profile.combat.weaponAttack)} / ${known(profile.combat.magicAttack)}`],
-    ['Accuracy / Avoidability', `${known(profile.combat.accuracy)} / ${known(profile.combat.avoidability)}`],
+    ['AP mostrados', ATTRIBUTES.map(attribute => `${attribute.toUpperCase()} ${known(profile.attributeTotals?.[attribute])}`).join(' · ')],
+    ['AP libres / Fame', `${known(profile.apAvailable)} / ${known(profile.fame)}`],
+    ...PROGRESS_FIELDS.map(field => [field.label, known(profile.progress?.[field.key])]),
+    ...COMBAT_FIELDS.map(field => [field.label, known(profile.combat[field.key])]),
     ['Equipo', profile.equipment || 'Sin registrar'],
     ['SP libres por avance', profile.spPools.map(pool => `${pool.name} ${known(pool.available)}`).join(' · ') || 'Sin registrar'],
     ['Habilidades', profile.skills.map(skill => `${skill.name} ${skill.rank}${skill.pool ? ` (${skill.pool})` : ''}`).join(' · ') || 'Sin registrar'],
@@ -304,7 +312,11 @@ $('start-form').addEventListener('submit', event => {
   });
 });
 
-$('session-profile').addEventListener('change', applySelectedProfile);
+$('session-profile').addEventListener('change', () => applySelectedProfile(true));
+$('capture-character').addEventListener('click', () => {
+  $('profiles-panel').open = true;
+  $('profile-form').querySelector('[data-ocr-form]').click();
+});
 $('new-profile').addEventListener('click', () => editProfile());
 $('add-sp-pool').addEventListener('click', () => appendProfileRow('sp-pool-template', 'sp-pools'));
 $('add-skill').addEventListener('click', () => appendProfileRow('skill-template', 'profile-skills'));
@@ -334,7 +346,7 @@ $('profile-form').addEventListener('submit', async event => {
   if (saved) {
     editProfile(state.profiles.find(profile => profile.id === id));
     $('session-profile').value = id;
-    applySelectedProfile();
+    applySelectedProfile(true);
     message('Personaje guardado. Puedes seleccionarlo al iniciar una sesión.');
   }
 });
@@ -402,6 +414,24 @@ window.addEventListener('storage', event => {
   }
 });
 
+function appendNumericFields(fields, containerId) {
+  for (const field of fields) {
+    const label = document.createElement('label');
+    label.textContent = field.label;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.name = field.key;
+    input.min = field.min ?? 0;
+    input.step = field.type === 'decimal' ? 'any' : '1';
+    input.inputMode = field.type === 'decimal' ? 'decimal' : 'numeric';
+    label.append(input);
+    $(containerId).append(label);
+  }
+}
+
+appendNumericFields([...PROGRESS_FIELDS, ...CHARACTER_FIELDS.filter(field => ['fame', 'apAvailable'].includes(field.key))], 'profile-progress-fields');
+appendNumericFields(CHARACTER_FIELDS.filter(field => ATTRIBUTES.some(key => field.key === key || field.key === `${key}Total`)), 'profile-attribute-fields');
+appendNumericFields(COMBAT_FIELDS.filter(field => field.key !== 'weaponAttack'), 'profile-combat-fields');
 setupImageImport();
 render();
 setInterval(updateClock, 250);

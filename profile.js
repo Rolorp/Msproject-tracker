@@ -1,8 +1,19 @@
 import { integer } from './session.js';
+import { ATTRIBUTES, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js';
 
 function optionalInteger(value, label) {
   return value === null || value === undefined || String(value).trim() === ''
     ? null : integer(value, label);
+}
+
+function optionalValue(value, field) {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  if (field.type !== 'decimal') return integer(value, field.label, field.min ?? 0);
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0 || number > Number.MAX_SAFE_INTEGER) {
+    throw new Error(`Revisa ${field.label}.`);
+  }
+  return number;
 }
 
 function text(value, label, limit, required = false) {
@@ -33,13 +44,18 @@ export function saveProfile(profiles, data, id, now, expectedRevision = null) {
   if (new Set(skillKeys).size !== skillKeys.length) throw new Error('Hay una habilidad repetida dentro del mismo avance.');
 
   const attributes = {};
-  for (const attribute of ['str', 'dex', 'int', 'luk']) {
+  const attributeTotals = {};
+  for (const attribute of ATTRIBUTES) {
     attributes[attribute] = optionalInteger(data[attribute], attribute.toUpperCase());
+    attributeTotals[attribute] = optionalInteger(data[`${attribute}Total`], `${attribute.toUpperCase()} mostrado`);
   }
   const combat = {};
-  for (const stat of ['maxHp', 'maxMp', 'weaponAttack', 'magicAttack', 'accuracy', 'avoidability']) {
-    combat[stat] = optionalInteger(data[stat], 'el valor de combate');
+  for (const field of COMBAT_FIELDS) combat[field.key] = optionalValue(data[field.key], field);
+  if (combat.attackMin !== null && combat.attackMax !== null && combat.attackMin > combat.attackMax) {
+    throw new Error('Attack mínimo debe ser menor o igual que Attack máximo.');
   }
+  const progress = {};
+  for (const field of PROGRESS_FIELDS) progress[field.key] = optionalValue(data[field.key], field);
   const environment = data.environment || 'live';
   if (!['live', 'test'].includes(environment)) throw new Error('Selecciona live o test.');
   const profile = {
@@ -53,7 +69,11 @@ export function saveProfile(profiles, data, id, now, expectedRevision = null) {
     environment,
     patch: text(data.patch, 'el parche observado', 80),
     attributes,
+    attributeTotals,
     combat,
+    progress,
+    fame: optionalValue(data.fame, { label: 'Fame', min: -Number.MAX_SAFE_INTEGER }),
+    apAvailable: optionalInteger(data.apAvailable, 'los AP libres'),
     equipment: text(data.equipment, 'el equipo', 4000),
     spPools,
     skills,
