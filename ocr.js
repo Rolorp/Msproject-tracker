@@ -1,24 +1,8 @@
-import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.6.2';
-import { recognizeCharacterImage, recognizeSelectedRegion } from './ocr-image.js?v=0.6.2';
-import { JOBS, validClass } from './jobs.js?v=0.6.2';
-import { reviewGroup } from './ocr-review.js?v=0.6.2';
-
-function initializeWorker(tesseract, options) {
-  return new Promise((resolve, reject) => {
-    let failed = false;
-    const fail = error => {
-      failed = true;
-      clearTimeout(timeout);
-      reject(error);
-    };
-    const timeout = setTimeout(() => fail(new Error('La preparación del OCR tardó demasiado.')), 60000);
-    tesseract.createWorker('eng', 1, { ...options, errorHandler: fail }).then(created => {
-      clearTimeout(timeout);
-      if (failed) created.terminate();
-      else resolve(created);
-    }, fail);
-  });
-}
+import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.7.0';
+import { recognizeCharacterImage, recognizeSelectedRegion } from './ocr-image.js?v=0.7.0';
+import { JOBS, validClass } from './jobs.js?v=0.7.0';
+import { reviewGroup } from './ocr-review.js?v=0.7.0';
+import { createOcrWorker } from './ocr-worker.js?v=0.7.0';
 
 export function setupImageImport() {
   const dialog = document.getElementById('ocr-dialog');
@@ -250,7 +234,7 @@ export function setupImageImport() {
       await preview.decode();
       if (selectedFile !== file) return;
       preview.hidden = false;
-      imageInfo.textContent = `Lector v0.6.2 · Foto ${preview.naturalWidth} × ${preview.naturalHeight}`;
+      imageInfo.textContent = `Lector v0.7.0 · Foto ${preview.naturalWidth} × ${preview.naturalHeight}`;
       imageInfo.hidden = false;
       regionButton.disabled = false;
       status.textContent = 'Imagen lista. Pulsa Leer imagen para extraer los valores.';
@@ -288,17 +272,9 @@ export function setupImageImport() {
     if (!region) rawText.value = '';
     status.textContent = 'Preparando la lectura. La primera vez puede tardar unos segundos.';
     try {
-      const { default: tesseract } = await import('./vendor/tesseract/tesseract.esm.min.js');
-      if (currentGeneration !== generation) return;
-      activeWorker = await initializeWorker(tesseract, {
-        workerPath: new URL('./vendor/tesseract/worker.min.js', import.meta.url).href,
-        corePath: new URL('./vendor/core/', import.meta.url).href,
-        langPath: new URL('./vendor/lang/', import.meta.url).href,
-        workerBlobURL: false,
-        logger: event => {
-          if (currentGeneration === generation && event.status === 'recognizing text') {
-            status.textContent = `Leyendo ${readingStage}… ${Math.round(event.progress * 100)} %`;
-          }
+      activeWorker = await createOcrWorker(event => {
+        if (currentGeneration === generation && event.status === 'recognizing text') {
+          status.textContent = `Leyendo ${readingStage}… ${Math.round(event.progress * 100)} %`;
         }
       });
       if (currentGeneration !== generation) return;
