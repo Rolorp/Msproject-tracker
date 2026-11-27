@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detectPanelRegions } from '../dist/ocr-panels.js';
+import { detectPanelRegions, resourceParts } from '../dist/ocr-panels.js';
 
 function panelImage({ pinkCount = 7, blueCount = 10, offset = 0 } = {}) {
   const width = 1000, height = 800;
@@ -20,7 +20,10 @@ function panelImage({ pinkCount = 7, blueCount = 10, offset = 0 } = {}) {
   for (let index = 0; index < blueCount; index += 1) rectangle(550, 140 + index * 24, 90, 20, [90, 145, 190]);
   rectangle(30, 390, 300, 45, [130, 165, 195]);
   rectangle(48, 402, 14, 14, [230, 190, 20]);
-  rectangle(75, 394, 190, 34, [250, 250, 245]);
+  rectangle(73, 398, 194, 26, [40, 40, 40]);
+  rectangle(75, 400, 190, 22, [250, 250, 245]);
+  rectangle(390, 390, 46, 26, [40, 40, 40]);
+  rectangle(392, 392, 42, 22, [250, 250, 245]);
   return { data, width, height };
 }
 
@@ -49,4 +52,21 @@ test('una ficha o unos detalles incompletos conservan los campos sin identificac
 
 test('una imagen sin la estructura de las ventanas utiliza la lectura general', () => {
   assert.deepEqual(detectPanelRegions({ data: new Uint8ClampedArray(200 * 200 * 4).fill(255), width: 200, height: 200 }), []);
+});
+
+test('separa una fracción por la barra diagonal y evita deducirla de una cadena de dígitos', () => {
+  const width = 120, height = 40;
+  const data = new Uint8ClampedArray(width * height * 4).fill(255);
+  const dark = (x, y) => data.set([20, 20, 20, 255], (y * width + x) * 4);
+  for (let y = 10; y < 30; y += 1) {
+    for (let x = 20; x < 23; x += 1) dark(x, y);
+    for (let x = 80; x < 83; x += 1) dark(x, y);
+  }
+  const region = { label: 'HP', x0: 0, y0: 0, x1: width, y1: height };
+  assert.deepEqual(resourceParts({ data, width, height }, region), []);
+  for (let y = 10; y < 30; y += 1) dark(60 + Math.round((29 - y) * .3), y);
+  const parts = resourceParts({ data, width, height }, region);
+  assert.equal(parts.length, 2);
+  assert.ok(parts[0].x1 < parts[1].x0);
+  assert.ok(parts[0].x1 > 23 && parts[1].x0 < 80);
 });

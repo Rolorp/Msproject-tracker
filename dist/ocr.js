@@ -1,5 +1,5 @@
-import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.4.1';
-import { recognizeCharacterImage } from './ocr-image.js?v=0.4.1';
+import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.4.2';
+import { recognizeCharacterImage } from './ocr-image.js?v=0.4.2';
 
 function initializeWorker(tesseract, options) {
   return new Promise((resolve, reject) => {
