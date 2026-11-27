@@ -1,5 +1,6 @@
-import { integer } from './session.js?v=0.4.2';
-import { ATTRIBUTES, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js?v=0.4.2';
+import { integer } from './session.js?v=0.4.3';
+import { ATTRIBUTES, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js?v=0.4.3';
+import { validClass } from './jobs.js?v=0.4.3';
 
 function optionalInteger(value, label) {
   return value === null || value === undefined || String(value).trim() === ''
@@ -24,6 +25,7 @@ function text(value, label, limit, required = false) {
 }
 
 export function saveProfile(profiles, data, id, now, expectedRevision = null) {
+  if (!validClass(data.job, data.specialization)) throw new Error('Selecciona un job y una especialización correspondiente.');
   const previous = profiles.find(profile => profile.id === id);
   if ((previous?.revision ?? null) !== expectedRevision) {
     throw new Error('El perfil cambió en otra pestaña. Vuelve a abrirlo con Editar antes de guardar.');
@@ -62,7 +64,8 @@ export function saveProfile(profiles, data, id, now, expectedRevision = null) {
     id,
     revision: (previous?.revision || 0) + 1,
     name: text(data.name, 'el nombre del personaje', 60, true),
-    job: text(data.job, 'la clase o rama', 100, true),
+    job: data.job,
+    specialization: data.specialization || '',
     level: integer(data.level, 'el nivel del personaje', 1),
     region: text(data.region, 'la región', 80, true),
     world: text(data.world, 'el mundo', 80),

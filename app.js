@@ -1,8 +1,9 @@
-import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSession, finishSession } from './session.js?v=0.4.2';
-import { saveProfile } from './profile.js?v=0.4.2';
-import { emptyState, restoreState } from './state.js?v=0.4.2';
-import { setupImageImport } from './ocr.js?v=0.4.2';
-import { ATTRIBUTES, CHARACTER_FIELDS, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js?v=0.4.2';
+import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSession, finishSession } from './session.js?v=0.4.3';
+import { saveProfile } from './profile.js?v=0.4.3';
+import { emptyState, restoreState } from './state.js?v=0.4.3';
+import { setupImageImport } from './ocr.js?v=0.4.3';
+import { ATTRIBUTES, CHARACTER_FIELDS, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js?v=0.4.3';
+import { JOBS, profileClass, classLabel } from './jobs.js?v=0.4.3';
 
 const STORAGE_KEY = 'msproject-tracker.v1';
 const $ = id => document.getElementById(id);
@@ -15,6 +16,14 @@ let initializedFinishId = null;
 let editingProfileId = null;
 let editingProfileRevision = null;
 let savingProfile = false;
+
+function updateSpecializations(value = '') {
+  const form = $('profile-form');
+  const selector = form.elements.specialization;
+  selector.replaceChildren(new Option('Sin especificar / primer avance', ''),
+    ...(JOBS[form.elements.job.value] || []).map(name => new Option(name, name)));
+  selector.value = (JOBS[form.elements.job.value] || []).includes(value) ? value : '';
+}
 
 function message(text) {
   $('message').textContent = text;
@@ -78,7 +87,7 @@ function editProfile(profile = null) {
   $('profile-skills').replaceChildren();
   if (profile) {
     const totals = Object.fromEntries(Object.entries(profile.attributeTotals || {}).map(([key, value]) => [`${key}Total`, value]));
-    const fields = { ...profile, ...profile.attributes, ...profile.combat, ...profile.progress, ...totals };
+    const fields = { ...profile, ...profileClass(profile), ...profile.attributes, ...profile.combat, ...profile.progress, ...totals };
     for (const control of form.elements) {
       if (control.name) control.value = fields[control.name] ?? '';
     }
@@ -89,6 +98,7 @@ function editProfile(profile = null) {
       appendProfileRow('skill-template', 'profile-skills', { skillName: skill.name, skillRank: skill.rank, skillPool: skill.pool });
     }
   }
+  updateSpecializations(profile ? profileClass(profile).specialization : '');
   $('profiles-panel').open = true;
   form.elements.name.focus();
 }
@@ -122,12 +132,12 @@ function renderProfiles() {
   for (const profile of state.profiles) {
     const option = document.createElement('option');
     option.value = profile.id;
-    option.textContent = `${profile.name} · ${profile.job} · Nv. ${profile.level}`;
+    option.textContent = `${profile.name} · ${classLabel(profile)} · Nv. ${profile.level}`;
     selector.append(option);
     const item = document.createElement('div');
     item.className = 'profile-item';
     const summary = document.createElement('p');
-    summary.textContent = `${profile.name} · ${profile.job} · Nv. ${profile.level} · ${profile.environment}`;
+    summary.textContent = `${profile.name} · ${classLabel(profile)} · Nv. ${profile.level} · ${profile.environment}`;
     const edit = document.createElement('button');
     edit.type = 'button';
     edit.className = 'secondary';
@@ -149,7 +159,7 @@ function renderProfileSnapshot(profile) {
   const statFormat = new Intl.NumberFormat('es', { maximumFractionDigits: 4 });
   const known = value => value == null ? 'desconocido' : statFormat.format(value);
   const fields = [
-    ['Personaje', `${profile.name} · ${profile.job} · Nv. ${profile.level}`],
+    ['Personaje', `${profile.name} · ${classLabel(profile)} · Nv. ${profile.level}`],
     ['Contexto', [profile.region, profile.world, profile.environment, profile.patch || 'Parche sin registrar'].filter(Boolean).join(' · ')],
     ['AP base', Object.entries(profile.attributes).map(([attribute, value]) => `${attribute.toUpperCase()} ${known(value)}`).join(' · ')],
     ['AP mostrados', ATTRIBUTES.map(attribute => `${attribute.toUpperCase()} ${known(profile.attributeTotals?.[attribute])}`).join(' · ')],
@@ -253,7 +263,7 @@ function renderHistory() {
     }
     const character = document.createElement('small');
     character.textContent = session.character || 'Sin personaje';
-    if (session.characterSnapshot) character.textContent += ` · ${session.characterSnapshot.job}`;
+    if (session.characterSnapshot) character.textContent += ` · ${classLabel(session.characterSnapshot)}`;
     row.cells[0].append(character);
     const actionCell = document.createElement('td');
     const action = document.createElement('button');
@@ -433,5 +443,6 @@ appendNumericFields([...PROGRESS_FIELDS, ...CHARACTER_FIELDS.filter(field => ['f
 appendNumericFields(CHARACTER_FIELDS.filter(field => ATTRIBUTES.some(key => field.key === key || field.key === `${key}Total`)), 'profile-attribute-fields');
 appendNumericFields(COMBAT_FIELDS.filter(field => field.key !== 'weaponAttack'), 'profile-combat-fields');
 setupImageImport();
+$('profile-form').elements.job.addEventListener('input', () => updateSpecializations());
 render();
 setInterval(updateClock, 250);

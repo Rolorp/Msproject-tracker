@@ -1,5 +1,6 @@
-import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.4.2';
-import { recognizeCharacterImage } from './ocr-image.js?v=0.4.2';
+import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.4.3';
+import { recognizeCharacterImage } from './ocr-image.js?v=0.4.3';
+import { JOBS, validClass } from './jobs.js?v=0.4.3';
 
 function initializeWorker(tesseract, options) {
   return new Promise((resolve, reject) => {
@@ -68,17 +69,28 @@ export function setupImageImport() {
       selectionLabel.append(checkbox, `Aplicar ${field.label}`);
       const valueLabel = document.createElement('label');
       valueLabel.textContent = field.label;
-      const input = document.createElement('input');
-      input.type = field.type === 'text' ? 'text' : 'number';
+      const isClass = ['job', 'specialization'].includes(key);
+      const input = document.createElement(isClass ? 'select' : 'input');
+      if (isClass) {
+        input.dataset.classField = key;
+        const options = key === 'job' ? Object.keys(JOBS) : JOBS[result.values.job || targetForm.elements.job.value] || [];
+        input.append(new Option(key === 'job' ? 'Selecciona un job' : 'Sin especificar / primer avance', ''), ...options.map(name => new Option(name, name)));
+      } else input.type = field.type === 'text' ? 'text' : 'number';
       input.step = field.type === 'decimal' ? 'any' : '1';
       input.min = control.min || field.min || 0;
       input.max = Number.MAX_SAFE_INTEGER;
       input.value = result.values[field.key] ?? '';
       input.disabled = !detected;
-      input.required = detected;
+      input.required = detected && key !== 'specialization';
       checkbox.addEventListener('change', () => {
         input.disabled = !checkbox.checked;
-        input.required = checkbox.checked;
+        input.required = checkbox.checked && key !== 'specialization';
+      });
+      if (key === 'job') input.addEventListener('change', () => {
+        const specialization = dialog.querySelector('[data-class-field="specialization"]');
+        const previous = specialization.value;
+        specialization.replaceChildren(new Option('Sin especificar / primer avance', ''), ...(JOBS[input.value] || []).map(name => new Option(name, name)));
+        specialization.value = (JOBS[input.value] || []).includes(previous) ? previous : '';
       });
       valueLabel.append(input);
       row.append(selectionLabel, valueLabel);
@@ -92,7 +104,8 @@ export function setupImageImport() {
     const description = count
       ? `Se leyeron ${count} campos. Revisa los datos y desmarca los que quieras omitir antes de confirmar.`
       : 'No se detectaron valores para este formulario. Revisa el texto o completa los campos pendientes.';
-    status.textContent = [description, ...result.warnings].join(' ');
+    const needsMesos = targetForm.elements.namedItem('mesos') && result.values.mesos === undefined;
+    status.textContent = [description, ...result.warnings, needsMesos ? 'Mesos pendientes: no se pudo leer el saldo. Puedes cargar una foto más cercana del inventario; los demás campos del personaje se conservan al aplicar.' : ''].join(' ');
     applyButton.disabled = candidates.children.length + missing.children.length === 0;
   }
 
@@ -243,10 +256,22 @@ export function setupImageImport() {
         return;
       }
     }
+    if (targetForm.id === 'profile-form') {
+      const classValue = key => {
+        const row = selected.find(item => item.querySelector('[type="checkbox"]').name === key);
+        return row ? row.querySelector('select').value : targetForm.elements.namedItem(key).value;
+      };
+      const job = classValue('job');
+      const specialization = classValue('specialization');
+      if ((job || specialization) && !validClass(job, specialization)) {
+        status.textContent = 'Selecciona un job y una especialización correspondiente antes de aplicar.';
+        return;
+      }
+    }
     for (const row of selected) {
       const key = row.querySelector('[type="checkbox"]').name;
       const control = targetForm.elements.namedItem(key);
-      control.value = row.querySelector('input:not([type="checkbox"])').value;
+      control.value = row.querySelector('input:not([type="checkbox"]), select').value;
       control.dispatchEvent(new Event('input', { bubbles: true }));
       const section = control.closest('details.profile-section');
       if (section) section.open = true;
