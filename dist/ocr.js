@@ -1,7 +1,7 @@
-import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.4.6';
-import { recognizeCharacterImage } from './ocr-image.js?v=0.4.6';
-import { JOBS, validClass } from './jobs.js?v=0.4.6';
-import { reviewGroup } from './ocr-review.js?v=0.4.6';
+import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.5.0';
+import { recognizeCharacterImage, recognizeSelectedRegion } from './ocr-image.js?v=0.5.0';
+import { JOBS, validClass } from './jobs.js?v=0.5.0';
+import { reviewGroup } from './ocr-review.js?v=0.5.0';
 
 function initializeWorker(tesseract, options) {
   return new Promise((resolve, reject) => {
@@ -38,11 +38,54 @@ export function setupImageImport() {
   const readButton = document.getElementById('ocr-read');
   const extractButton = document.getElementById('ocr-extract');
   const applyButton = document.getElementById('ocr-apply');
+  const imageInfo = document.getElementById('ocr-image-info');
+  const regionButton = document.getElementById('ocr-open-region');
+  const regionTools = document.getElementById('ocr-region-tools');
+  const regionImage = document.getElementById('ocr-region-image');
+  const regionBox = document.getElementById('ocr-region-box');
+  const regionKind = document.getElementById('ocr-region-kind');
+  const regionStatus = document.getElementById('ocr-region-status');
+  const regionRead = document.getElementById('ocr-read-region');
   let targetForm = null;
   let imageUrl = null;
   let worker = null;
   let generation = 0;
   let selectedFile = null;
+  let lastResult = null;
+  let regionAnchor = null;
+  let selectedBox = null;
+
+  function resetRegion() {
+    regionAnchor = null;
+    selectedBox = null;
+    regionBox.hidden = true;
+    regionRead.disabled = true;
+    regionStatus.textContent = 'Toca la primera esquina.';
+  }
+
+  regionButton.addEventListener('click', () => {
+    regionTools.hidden = !regionTools.hidden;
+    if (!regionTools.hidden) regionImage.src = imageUrl;
+  });
+  document.getElementById('ocr-reset-region').addEventListener('click', resetRegion);
+  regionKind.addEventListener('change', resetRegion);
+  regionImage.addEventListener('click', event => {
+    if (fileInput.disabled) return;
+    const bounds = regionImage.getBoundingClientRect();
+    const point = { x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)), y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)) };
+    if (!regionAnchor || selectedBox) {
+      resetRegion();
+      regionAnchor = point;
+      regionBox.style.cssText = `left:${point.x * 100}%;top:${point.y * 100}%;width:4px;height:4px`;
+      regionBox.hidden = false;
+      regionStatus.textContent = 'Ahora toca la esquina opuesta.';
+      return;
+    }
+    selectedBox = { x0: Math.min(regionAnchor.x, point.x), x1: Math.max(regionAnchor.x, point.x), y0: Math.min(regionAnchor.y, point.y), y1: Math.max(regionAnchor.y, point.y) };
+    regionBox.style.cssText = `left:${selectedBox.x0 * 100}%;top:${selectedBox.y0 * 100}%;width:${(selectedBox.x1 - selectedBox.x0) * 100}%;height:${(selectedBox.y1 - selectedBox.y0) * 100}%`;
+    regionRead.disabled = selectedBox.x1 - selectedBox.x0 < .002 || selectedBox.y1 - selectedBox.y0 < .002;
+    regionStatus.textContent = regionRead.disabled ? 'La zona es demasiado pequeña. Vuelve a marcarla.' : 'Zona lista. Pulsa Leer zona marcada.';
+  });
 
   function clearReview() {
     for (const container of [candidates, missing, bases, preserved]) container.replaceChildren();
@@ -56,10 +99,25 @@ export function setupImageImport() {
     readButton.disabled = busy;
     extractButton.disabled = busy;
     applyButton.disabled = busy;
+    regionButton.disabled = busy || !selectedFile;
+    regionRead.disabled = busy || !selectedBox;
+    regionKind.disabled = busy;
+    document.getElementById('ocr-reset-region').disabled = busy;
   }
 
-  function showCandidates() {
-    const result = extractValues(rawText.value);
+  function restoreChoices(choices, replacement = {}) {
+    for (const row of [...candidates.children, ...missing.children, ...bases.children, ...preserved.children]) {
+      const checkbox = row.querySelector('[type="checkbox"]');
+      const sourceKey = checkbox.name === 'character' ? 'name' : checkbox.name;
+      if (choices.has(checkbox.name) && replacement[sourceKey] === undefined) {
+        checkbox.checked = choices.get(checkbox.name);
+        checkbox.dispatchEvent(new Event('change'));
+      }
+    }
+  }
+
+  function showCandidates(result = extractValues(rawText.value)) {
+    lastResult = result;
     clearReview();
     const current = Object.fromEntries(new FormData(targetForm));
     let count = 0;
@@ -118,7 +176,7 @@ export function setupImageImport() {
       ? `Se leyeron ${count} campos. Revisa los datos y desmarca los que quieras omitir antes de confirmar.`
       : 'No se detectaron valores para este formulario. Revisa el texto o completa los campos pendientes.';
     const needsMesos = targetForm.elements.namedItem('mesos') && result.values.mesos === undefined;
-    status.textContent = [description, ...result.warnings, needsMesos ? 'Mesos pendientes: no se pudo leer el saldo. Puedes cargar una foto más cercana del inventario; los demás campos del personaje se conservan al aplicar.' : ''].join(' ');
+    status.textContent = [description, ...result.warnings, needsMesos ? 'Mesos pendientes: usa Leer una zona concreta para marcar el saldo del inventario y reintentar sin perder los demás datos.' : ''].join(' ');
     applyButton.disabled = candidates.children.length + missing.children.length + bases.children.length + preserved.children.length === 0;
   }
 
@@ -126,6 +184,7 @@ export function setupImageImport() {
     button.addEventListener('click', () => {
       targetForm = document.getElementById(button.dataset.ocrForm);
       rawText.value = '';
+      lastResult = null;
       clearReview();
       document.getElementById('ocr-purpose').textContent = targetForm.id === 'profile-form'
         ? 'Lee una captura general con CHARACTER STAT, sus detalles e inventario visibles. Se propondrán todos los datos del personaje para revisarlos.'
@@ -149,6 +208,11 @@ export function setupImageImport() {
     fileInput.value = '';
     cameraInput.value = '';
     selectedFile = null;
+    lastResult = null;
+    resetRegion();
+    regionTools.hidden = true;
+    regionImage.removeAttribute('src');
+    imageInfo.hidden = true;
     rawText.value = '';
     clearReview();
   });
@@ -159,6 +223,11 @@ export function setupImageImport() {
     // Cancelling either native picker preserves the image already under review.
     if (!file) return;
     selectedFile = file;
+    regionButton.disabled = true;
+    lastResult = null;
+    resetRegion();
+    regionTools.hidden = true;
+    imageInfo.hidden = true;
     const otherInput = input === fileInput ? cameraInput : fileInput;
     otherInput.value = '';
     clearReview();
@@ -179,6 +248,9 @@ export function setupImageImport() {
       await preview.decode();
       if (selectedFile !== file) return;
       preview.hidden = false;
+      imageInfo.textContent = `Lector v0.5.0 · Foto ${preview.naturalWidth} × ${preview.naturalHeight}`;
+      imageInfo.hidden = false;
+      regionButton.disabled = false;
       status.textContent = 'Imagen lista. Pulsa Leer imagen para extraer los valores.';
     } catch {
       if (selectedFile !== file) return;
@@ -192,7 +264,7 @@ export function setupImageImport() {
   cameraInput.addEventListener('change', selectImage);
   cameraButton.addEventListener('click', () => cameraInput.click());
 
-  readButton.addEventListener('click', async () => {
+  async function readImage(region = null) {
     const file = selectedFile;
     if (!file) {
       status.textContent = 'Selecciona una imagen primero.';
@@ -201,9 +273,17 @@ export function setupImageImport() {
     const currentGeneration = ++generation;
     let activeWorker;
     let readingStage = 'imagen';
+    const previous = lastResult;
+    const choices = new Map();
+    if (region && previous) for (const row of [...candidates.children, ...missing.children, ...bases.children, ...preserved.children]) {
+      const checkbox = row.querySelector('[type="checkbox"]');
+      const input = row.querySelector('input:not([type="checkbox"]), select');
+      choices.set(checkbox.name, checkbox.checked);
+      if (checkbox.checked && input.value !== '') previous.values[checkbox.name === 'character' ? 'name' : checkbox.name] = input.tagName === 'SELECT' || input.type === 'text' ? input.value : Number(input.value);
+    }
     setBusy(true);
     clearReview();
-    rawText.value = '';
+    if (!region) rawText.value = '';
     status.textContent = 'Preparando la lectura. La primera vez puede tardar unos segundos.';
     try {
       const { default: tesseract } = await import('./vendor/tesseract/tesseract.esm.min.js');
@@ -223,27 +303,38 @@ export function setupImageImport() {
       worker = activeWorker;
       await preview.decode();
       if (currentGeneration !== generation) return;
-      const data = await recognizeCharacterImage(activeWorker, preview, stage => {
+      const progress = stage => {
         readingStage = stage;
         if (currentGeneration === generation) status.textContent = `Leyendo ${stage}…`;
-      }, () => currentGeneration !== generation);
+      };
+      const data = region
+        ? await recognizeSelectedRegion(activeWorker, preview, region.kind, region.box, () => currentGeneration !== generation)
+        : await recognizeCharacterImage(activeWorker, preview, progress, () => currentGeneration !== generation);
       if (!data || currentGeneration !== generation) return;
-      rawText.value = extractValues(data.text, data.blocks).text;
+      const result = extractValues(data.text, data.blocks);
+      rawText.value = region ? `${rawText.value}\n# Zona seleccionada\n${result.text}` : result.text;
       setBusy(false);
-      showCandidates();
+      showCandidates(region && previous ? { ...result, values: { ...previous.values, ...result.values } } : result);
+      if (region) {
+        restoreChoices(choices, result.values);
+        regionStatus.textContent = Object.keys(result.values).length ? 'Zona leída. Revisa el valor en los campos detectados.' : 'No se pudo leer esta zona. Marca el texto más ajustado o completa el dato manualmente.';
+      }
     } catch {
       if (currentGeneration === generation) {
         setBusy(false);
-        applyButton.disabled = true;
-        status.textContent = 'No se pudo leer la imagen. Intenta otra captura o introduce los datos en el formulario.';
+        if (region && previous) { showCandidates(previous); restoreChoices(choices); }
+        else applyButton.disabled = true;
+        status.textContent = 'No se pudo leer la imagen. Intenta otra zona o introduce el dato en el formulario.';
       }
     } finally {
       await activeWorker?.terminate();
       if (worker === activeWorker) worker = null;
     }
-  });
+  }
+  readButton.addEventListener('click', () => readImage());
+  regionRead.addEventListener('click', () => selectedBox && readImage({ kind: regionKind.value, box: selectedBox }));
 
-  extractButton.addEventListener('click', showCandidates);
+  extractButton.addEventListener('click', () => showCandidates());
   document.getElementById('ocr-review').addEventListener('submit', event => {
     event.preventDefault();
     if (targetForm.hidden) {

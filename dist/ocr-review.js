@@ -1,4 +1,4 @@
-import { ATTRIBUTES } from './character-fields.js?v=0.4.6';
+import { ATTRIBUTES } from './character-fields.js?v=0.5.0';
 
 const known = value => value !== undefined && value !== null && String(value).trim() !== '';
 

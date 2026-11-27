@@ -543,6 +543,12 @@ dialog::backdrop {
   object-fit: contain;
 }
 
+#ocr-region-tools { margin: 1rem 0; }
+#ocr-region-stage { position: relative; width: 100%; margin: 1rem 0; }
+#ocr-region-image { display: block; width: 100%; height: auto; cursor: crosshair; }
+#ocr-region-box { position: absolute; border: 2px solid #c6f69b; background: #b9f88733; pointer-events: none; }
+#ocr-region-box[hidden], #ocr-region-tools[hidden], #ocr-image-info[hidden] { display: none; }
+
 .ocr-candidate {
   display: grid;
   grid-template-columns: 1fr 1fr;

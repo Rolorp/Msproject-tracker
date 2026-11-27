@@ -38,7 +38,7 @@ test('lee una captura sintética general de paneles y recupera 29 campos', async
     name: 'TestMage', job: 'Magician', specialization: 'Wizard (Fire/Poison)', level: 45,
     currentHp: 611, maxHp: 1054, currentMp: 1923, maxMp: 1978,
     exp: 206845, expPercent: 44, fame: 25,
-    strTotal: 4, dexTotal: 4, intTotal: 222, int: 204, lukTotal: 40, luk: 33,
+    strTotal: 4, str: 4, dexTotal: 4, dex: 4, intTotal: 222, int: 204, lukTotal: 40, luk: 33,
     apAvailable: 0, attackMin: 46, attackMax: 61, weaponDefense: 154,
     magicAttack: 198, magicDefense: 198, accuracy: 95, avoidability: 22,
     critRate: 10, critDamage: 126, speed: 100, jump: 100, mesos: 99958

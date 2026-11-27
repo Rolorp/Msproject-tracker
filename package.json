@@ -1,6 +1,6 @@
 {
   "name": "msproject-tracker",
-  "version": "0.4.6",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "description": "Registro de sesiones de MapleStory Classic World",
@@ -11,7 +11,7 @@
     "prestart": "npm run build",
     "start": "node server.mjs",
     "test": "node --test",
-    "check": "node --check dist/app.js && node --check dist/session.js && node --check dist/jobs.js && node --check dist/profile.js && node --check dist/state.js && node --check dist/character-fields.js && node --check dist/ocr-review.js && node --check dist/ocr-evidence.js && node --check dist/ocr.js && node --check dist/ocr-parser.js && node --check dist/ocr-image.js && node --check dist/ocr-panels.js && node --check scripts/prepare-ocr.mjs && node --check server.mjs"
+    "check": "node --check dist/app.js && node --check dist/session.js && node --check dist/jobs.js && node --check dist/profile.js && node --check dist/state.js && node --check dist/character-fields.js && node --check dist/ocr-pixels.js && node --check dist/ocr-review.js && node --check dist/ocr-evidence.js && node --check dist/ocr.js && node --check dist/ocr-parser.js && node --check dist/ocr-image.js && node --check dist/ocr-panels.js && node --check scripts/prepare-ocr.mjs && node --check server.mjs"
   },
   "engines": {
     "node": ">=20"
