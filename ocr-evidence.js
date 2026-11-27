@@ -1,4 +1,4 @@
-import { parseOcrClass } from './jobs.js?v=0.4.6';
+import { parseOcrClass } from './jobs.js?v=0.5.0';
 
 export function confirmedBalance(readings) {
   // Tesseract's confidence is poorly calibrated for the game's pixel font:

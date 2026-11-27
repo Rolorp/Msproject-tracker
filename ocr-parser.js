@@ -1,5 +1,5 @@
-import { CHARACTER_FIELDS } from './character-fields.js?v=0.4.6';
-import { parseOcrClass, validClass } from './jobs.js?v=0.4.6';
+import { CHARACTER_FIELDS } from './character-fields.js?v=0.5.0';
+import { parseOcrClass, validClass } from './jobs.js?v=0.5.0';
 
 export const OCR_FIELDS = CHARACTER_FIELDS;
 
@@ -44,7 +44,7 @@ function readNumber(segment) {
   const rest = segment.slice(match[0].length);
   if (/^[a-z0-9]/i.test(rest) && !match[1].endsWith(' ')) return null;
   const value = parseInteger(match[1]);
-  return value === null ? null : { value, tail: rest.trimStart() };
+  return value === null ? null : { value, tail: rest.trimStart(), rawTail: rest };
 }
 
 function readPercent(segment) {
@@ -159,7 +159,8 @@ export function extractValues(text, blocks = null) {
         const base = parts ? parseInteger(parts[1]) : null;
         const bonus = parts ? parseInteger(parts[2]) : null;
         if (base !== null && bonus !== null && base + bonus === number.value) put(field.key, base);
-        else if (number.tail.startsWith('(')) warnings.add(`${field.key.toUpperCase()} base requiere comprobar la suma en la imagen.`);
+        else if (!number.rawTail.split('\n')[0].trim() && !/^\s*[(+]/.test(number.rawTail)) put(field.key, number.value);
+        else if (/[()+]/.test(number.tail)) warnings.add(`${field.key.toUpperCase()} base requiere comprobar la suma en la imagen.`);
       }
       continue;
     }

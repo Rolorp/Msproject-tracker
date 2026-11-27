@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#10241f">
   <meta name="description" content="Mide la EXP y los mesos por hora de tus sesiones de MapleStory Classic World.">
   <title>MSproject tracker</title>
-  <link rel="stylesheet" href="styles.css?v=0.4.6">
-  <script type="module" src="app.js?v=0.4.6"></script>
+  <link rel="stylesheet" href="styles.css?v=0.5.0">
+  <script type="module" src="app.js?v=0.5.0"></script>
 </head>
 <body>
   <header class="topbar">
@@ -136,7 +136,17 @@
     <button id="ocr-open-camera" class="secondary image-import" type="button">Tomar foto</button>
     <input id="ocr-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden>
     <img id="ocr-preview" alt="Imagen seleccionada para leer valores" hidden>
+    <p id="ocr-image-info" class="form-hint" hidden></p>
     <button id="ocr-read" class="image-import" type="button">Leer imagen</button>
+    <button id="ocr-open-region" class="secondary" type="button" disabled>Leer una zona concreta</button>
+    <section id="ocr-region-tools" hidden aria-label="Selección de una zona de la foto">
+      <label>Dato de esta zona<select id="ocr-region-kind"><option value="mesos">Mesos del inventario</option><option value="specialization">Especialización</option><option value="apAvailable">AP libres</option></select></label>
+      <p class="form-hint" id="ocr-region-hint">Toca dos esquinas opuestas para encerrar solo el importe de mesos. Para especialización, encierra su texto bajo JOB o sobre el nombre de la barra inferior.</p>
+      <div id="ocr-region-stage"><img id="ocr-region-image" alt="Foto para marcar dos esquinas de la zona que quieres leer"><span id="ocr-region-box" hidden></span></div>
+      <p id="ocr-region-status" role="status" class="form-hint">Toca la primera esquina.</p>
+      <button id="ocr-reset-region" class="secondary" type="button">Volver a marcar</button>
+      <button id="ocr-read-region" type="button" disabled>Leer zona marcada</button>
+    </section>
     <p id="ocr-status" role="status" class="form-hint"></p>
     <details><summary>Revisar el texto leído</summary><label>Texto detectado<textarea id="ocr-text" rows="6" spellcheck="false"></textarea></label><button id="ocr-extract" class="secondary image-import" type="button">Extraer valores del texto</button></details>
     <form id="ocr-review">
@@ -147,6 +157,6 @@
       <button id="ocr-apply" type="submit" disabled>Aplicar datos revisados</button>
     </form>
   </dialog>
-  <footer>MSproject tracker <span>v0.4.6 · Proyecto de fans independiente</span></footer>
+  <footer>MSproject tracker <span>v0.5.0 · Proyecto de fans independiente</span></footer>
 </body>
 </html>
