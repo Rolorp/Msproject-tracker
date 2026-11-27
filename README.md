@@ -2,6 +2,10 @@
 
 Webapp para registrar sesiones de MapleStory Classic World y calcular EXP y mesos por hora.
 
+La app está publicada en [GitHub Pages](https://rolorp.github.io/Msproject-tracker/). Puedes abrirla desde el navegador del celular y utilizar **Tomar foto** dentro del lector de imágenes.
+
+El código fuente se mantiene en `main`. GitHub Pages sirve los archivos compilados de la rama `gh-pages`, incluido el motor OCR y su modelo local.
+
 El objetivo completo incluye perfiles de personaje, planificación legal de SP y comparaciones reproducibles según la metodología de MSHelper. La versión actual incorpora el tracker, los perfiles manuales y la lectura de valores numéricos desde imágenes con revisión.
 
 ## Ejecutar
