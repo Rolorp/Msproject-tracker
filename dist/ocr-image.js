@@ -1,8 +1,8 @@
-import { detectPanelRegions, resourceParts, mesosLabelRegions } from './ocr-panels.js?v=0.6.1';
-import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.6.1';
-import { extractHudClass, rightAlignedBalance, confirmedBalance, mergeReadings } from './ocr-evidence.js?v=0.6.1';
-import { resizePixels, panelPixels, trimBalanceBorders } from './ocr-pixels.js?v=0.6.1';
-import { parseOcrClass } from './jobs.js?v=0.6.1';
+import { detectPanelRegions, resourceParts, mesosLabelRegions } from './ocr-panels.js?v=0.6.2';
+import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.6.2';
+import { extractHudClass, rightAlignedBalance, confirmedBalance, mergeReadings } from './ocr-evidence.js?v=0.6.2';
+import { balanceDigits, resizePixels, panelPixels, trimBalanceBorders } from './ocr-pixels.js?v=0.6.2';
+import { parseOcrClass } from './jobs.js?v=0.6.2';
 
 function imagePixels(image) {
   const canvas = document.createElement('canvas');
@@ -50,14 +50,44 @@ function originalBox(source, analysis, region) {
     y0: region.y0 * source.height / analysis.height, y1: region.y1 * source.height / analysis.height };
 }
 
+async function readIsolatedBalance(worker, image, box, cancelled) {
+  const height = box.y1 - box.y0;
+  const row = panelPixels(image, { ...box, x0: Math.max(box.x0, box.x1 - height * 9) });
+  for (const threshold of [155, 145, 165]) {
+    const pixels = balanceDigits(row, threshold);
+    if (!pixels) continue;
+    const crop = pixelCanvas(pixels);
+    const readings = [];
+    for (const mode of ['13', '7']) {
+      if (cancelled()) return '';
+      await worker.setParameters({ tessedit_pageseg_mode: mode, tessedit_char_whitelist: '0123456789., ' });
+      const { data } = await worker.recognize(crop, {}, { text: true, blocks: true });
+      const raw = data.text.trim();
+      const value = /^\d[\d., ]*$/.test(raw) ? extractValues(`MESOS ${raw}`).values.mesos : undefined;
+      // Raw-line mode can report the entire crop as the word bounds. Use
+      // standard line mode for position and raw-line mode to verify the digits.
+      readings.push({ raw, value, confidence: data.confidence, aligned: mode === '13' || rightAlignedBalance(data, crop.width, crop.height, 12) });
+    }
+    const value = confirmedBalance(readings);
+    // The exact thousands grouping in one pass guards against a short or
+    // fused reading; the other pass may represent the comma with a space.
+    if (value && readings.some(reading => reading.confidence >= 88 && /^\d{1,3}(?:,\d{3})*$/.test(reading.raw))) return value;
+  }
+  return '';
+}
+
 async function readBalance(worker, image, box, cancelled, requireAlignment = true, trimBorders = false) {
   const interior = trimBorders ? trimBalanceBorders(image, box) : box;
   const height = interior.y1 - interior.y0;
-  const tight = { ...interior, x0: Math.max(interior.x0, interior.x1 - height * 5) };
+  const tight = { ...interior, x0: Math.max(interior.x0, interior.x1 - height * 9) };
   const padded = { ...tight, x1: Math.min(image.width, tight.x1 + height * .025),
     y0: Math.max(0, tight.y0 - height * .05), y1: Math.min(image.height, tight.y1 + height * .05) };
   const crops = requireAlignment ? [{ box: tight }, { box: padded, binary: true }, { box: interior }, { box: tight, binary: true }] : [{ box }, { box, binary: true }];
   const smallField = trimBorders && height < 16;
+  if (smallField) {
+    const value = await readIsolatedBalance(worker, image, interior, cancelled);
+    if (value) return value;
+  }
   const minimumMatches = trimBorders ? 2 : 1;
   const confirmed = new Map();
   for (const { box: bounds, binary } of crops) {
@@ -82,7 +112,8 @@ async function readBalance(worker, image, box, cancelled, requireAlignment = tru
     confirmed.set(value, { formatted: formatted || previous?.formatted, legible: legible || previous?.legible, count: (previous?.count ?? 0) + 1 });
   }
   const complete = [...confirmed].filter(([, reading]) => reading.formatted && reading.legible && reading.count >= minimumMatches);
-  return confirmed.size === 1 && complete.length === 1 ? complete[0][0] : '';
+  if (confirmed.size === 1 && complete.length === 1) return complete[0][0];
+  return trimBorders && !smallField ? readIsolatedBalance(worker, image, interior, cancelled) : '';
 }
 
 export async function recognizeSelectedRegion(worker, image, kind, box, cancelled) {

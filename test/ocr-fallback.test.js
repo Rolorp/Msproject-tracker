@@ -58,3 +58,36 @@ test('la lectura general completa los huecos y conserva los valores ya leídos p
   const general = { values: { currentHp: 5891054, name: 'Mapler', mesos: 99958, intTotal: 204 }, warnings: [] };
   assert.deepEqual(mergeReadings(primary, general).values, { currentHp: 589, intTotal: 222, name: 'Mapler', mesos: 99958 });
 });
+
+test('recupera un saldo del inventario cuando la lectura de la casilla completa falla', async () => {
+  const image = panelImage();
+  image.naturalWidth = image.width;
+  image.naturalHeight = image.height;
+  for (let y = 406; y < 416; y += 1) for (const x0 of [235, 244, 253]) {
+    for (let x = x0; x < x0 + 4; x += 1) image.data.set([35, 35, 35, 255], (y * image.width + x) * 4);
+  }
+  const previous = globalThis.document;
+  globalThis.document = { createElement: () => new PixelCanvas() };
+  let stage, mode, isolated = false;
+  const worker = {
+    setParameters: async parameters => { mode = parameters.tessedit_pageseg_mode; },
+    recognize: async canvas => {
+      if (!stage.startsWith('MESOS')) return { data: { text: '', blocks: [] } };
+      if (mode === '13') isolated = true;
+      if (!isolated) return { data: { text: '', blocks: [] } };
+      const bbox = mode === '13'
+        ? { x0: 0, x1: canvas.width, y0: 0, y1: canvas.height }
+        : { x0: 18, x1: canvas.width - 18, y0: 20, y1: canvas.height - 20 };
+      const text = '735,104';
+      return { data: { confidence: 95, text, blocks: [{ paragraphs: [{ lines: [{ words: [{ text, bbox }] }] }] }] } };
+    }
+  };
+  try {
+    const result = await recognizeCharacterImage(worker, image, label => { stage = label; }, () => false);
+    assert.equal(isolated, true);
+    assert.equal(result.values.mesos, 735104);
+  } finally {
+    if (previous === undefined) delete globalThis.document;
+    else globalThis.document = previous;
+  }
+});

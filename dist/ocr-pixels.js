@@ -68,3 +68,39 @@ export function panelPixels(source, box, { invert = false, binary = false, redTe
   }
   return { data, width, height: outputHeight };
 }
+
+// Normalize the margins around the actual glyphs so OCR does not see the
+// inventory frame or a long blank field as part of the number.
+export function balanceDigits(pixels, threshold) {
+  const { data, width, height } = pixels;
+  const border = 8;
+  const columns = [];
+  for (let x = border; x < width - border; x += 1) {
+    let top = height, bottom = 0;
+    for (let y = border; y < height - border; y += 1) {
+      if (data[(y * width + x) * 4] >= threshold) continue;
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y + 1);
+    }
+    if (bottom - top >= 10 && bottom - top < 86) columns.push({ x, top, bottom });
+  }
+  if (!columns.length) return null;
+  const first = columns[0].x, last = columns.at(-1).x;
+  // A crop that starts inside a digit or has widely separated marks is unsafe.
+  if (first < border + 3 || last > width - border - 3 || width - border - last > height * .65 ||
+      columns.some((column, index) => index > 0 && column.x - columns[index - 1].x > 34)) return null;
+  const x0 = first - 4, x1 = last + 4;
+  const y0 = Math.max(1, Math.min(...columns.map(column => column.top)) - 7);
+  const y1 = Math.min(height - 1, Math.max(...columns.map(column => column.bottom)) + 13);
+  if (x1 - x0 < 8 || y1 - y0 < 15) return null;
+  const padding = 16;
+  const outputWidth = x1 - x0 + padding * 2;
+  const outputHeight = y1 - y0 + padding * 2;
+  const output = new Uint8ClampedArray(outputWidth * outputHeight * 4).fill(255);
+  for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) {
+    if (data[(y * width + x) * 4] >= threshold) continue;
+    const index = ((y - y0 + padding) * outputWidth + x - x0 + padding) * 4;
+    output.fill(0, index, index + 3);
+  }
+  return { data: output, width: outputWidth, height: outputHeight };
+}
