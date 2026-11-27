@@ -1,7 +1,7 @@
-import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.5.0';
-import { recognizeCharacterImage, recognizeSelectedRegion } from './ocr-image.js?v=0.5.0';
-import { JOBS, validClass } from './jobs.js?v=0.5.0';
-import { reviewGroup } from './ocr-review.js?v=0.5.0';
+import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.6.0';
+import { recognizeCharacterImage, recognizeSelectedRegion } from './ocr-image.js?v=0.6.0';
+import { JOBS, validClass } from './jobs.js?v=0.6.0';
+import { reviewGroup } from './ocr-review.js?v=0.6.0';
 
 function initializeWorker(tesseract, options) {
   return new Promise((resolve, reject) => {
@@ -31,9 +31,7 @@ export function setupImageImport() {
   const candidates = document.getElementById('ocr-candidates');
   const missing = document.getElementById('ocr-missing-fields');
   const missingPanel = document.getElementById('ocr-missing');
-  const bases = document.getElementById('ocr-base-fields');
   const preserved = document.getElementById('ocr-preserved-fields');
-  const basesPanel = document.getElementById('ocr-bases');
   const preservedPanel = document.getElementById('ocr-preserved');
   const readButton = document.getElementById('ocr-read');
   const extractButton = document.getElementById('ocr-extract');
@@ -88,8 +86,8 @@ export function setupImageImport() {
   });
 
   function clearReview() {
-    for (const container of [candidates, missing, bases, preserved]) container.replaceChildren();
-    for (const panel of [missingPanel, basesPanel, preservedPanel]) { panel.hidden = true; panel.open = false; }
+    for (const container of [candidates, missing, preserved]) container.replaceChildren();
+    for (const panel of [missingPanel, preservedPanel]) { panel.hidden = true; panel.open = false; }
   }
 
   function setBusy(busy) {
@@ -106,7 +104,7 @@ export function setupImageImport() {
   }
 
   function restoreChoices(choices, replacement = {}) {
-    for (const row of [...candidates.children, ...missing.children, ...bases.children, ...preserved.children]) {
+    for (const row of [...candidates.children, ...missing.children, ...preserved.children]) {
       const checkbox = row.querySelector('[type="checkbox"]');
       const sourceKey = checkbox.name === 'character' ? 'name' : checkbox.name;
       if (choices.has(checkbox.name) && replacement[sourceKey] === undefined) {
@@ -166,10 +164,9 @@ export function setupImageImport() {
       if (detected) {
         candidates.append(row);
         count += 1;
-      } else ({ base: bases, preserved, missing })[group].append(row);
+      } else ({ preserved, missing })[group].append(row);
     }
     missingPanel.hidden = missing.children.length === 0;
-    basesPanel.hidden = bases.children.length === 0;
     preservedPanel.hidden = preserved.children.length === 0;
     missingPanel.open = count === 0;
     const description = count
@@ -177,7 +174,7 @@ export function setupImageImport() {
       : 'No se detectaron valores para este formulario. Revisa el texto o completa los campos pendientes.';
     const needsMesos = targetForm.elements.namedItem('mesos') && result.values.mesos === undefined;
     status.textContent = [description, ...result.warnings, needsMesos ? 'Mesos pendientes: usa Leer una zona concreta para marcar el saldo del inventario y reintentar sin perder los demás datos.' : ''].join(' ');
-    applyButton.disabled = candidates.children.length + missing.children.length + bases.children.length + preserved.children.length === 0;
+    applyButton.disabled = candidates.children.length + missing.children.length + preserved.children.length === 0;
   }
 
   document.querySelectorAll('[data-ocr-form]').forEach(button => {
@@ -248,7 +245,7 @@ export function setupImageImport() {
       await preview.decode();
       if (selectedFile !== file) return;
       preview.hidden = false;
-      imageInfo.textContent = `Lector v0.5.0 · Foto ${preview.naturalWidth} × ${preview.naturalHeight}`;
+      imageInfo.textContent = `Lector v0.6.0 · Foto ${preview.naturalWidth} × ${preview.naturalHeight}`;
       imageInfo.hidden = false;
       regionButton.disabled = false;
       status.textContent = 'Imagen lista. Pulsa Leer imagen para extraer los valores.';
@@ -275,7 +272,7 @@ export function setupImageImport() {
     let readingStage = 'imagen';
     const previous = lastResult;
     const choices = new Map();
-    if (region && previous) for (const row of [...candidates.children, ...missing.children, ...bases.children, ...preserved.children]) {
+    if (region && previous) for (const row of [...candidates.children, ...missing.children, ...preserved.children]) {
       const checkbox = row.querySelector('[type="checkbox"]');
       const input = row.querySelector('input:not([type="checkbox"]), select');
       choices.set(checkbox.name, checkbox.checked);
@@ -311,7 +308,7 @@ export function setupImageImport() {
         ? await recognizeSelectedRegion(activeWorker, preview, region.kind, region.box, () => currentGeneration !== generation)
         : await recognizeCharacterImage(activeWorker, preview, progress, () => currentGeneration !== generation);
       if (!data || currentGeneration !== generation) return;
-      const result = extractValues(data.text, data.blocks);
+      const result = data.values ? { values: data.values, warnings: data.warnings || [], text: data.text } : extractValues(data.text, data.blocks);
       rawText.value = region ? `${rawText.value}\n# Zona seleccionada\n${result.text}` : result.text;
       setBusy(false);
       showCandidates(region && previous ? { ...result, values: { ...previous.values, ...result.values } } : result);
@@ -341,7 +338,7 @@ export function setupImageImport() {
       status.textContent = 'El formulario cambió mientras leías la imagen. Ciérrala y vuelve a abrirlo.';
       return;
     }
-    const selected = [candidates, missing, bases, preserved].flatMap(container => [...container.children]).filter(row => row.querySelector('[type="checkbox"]').checked);
+    const selected = [candidates, missing, preserved].flatMap(container => [...container.children]).filter(row => row.querySelector('[type="checkbox"]').checked);
     if (!selected.length) {
       status.textContent = 'Marca al menos un campo para aplicarlo.';
       return;

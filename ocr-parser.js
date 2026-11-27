@@ -1,5 +1,5 @@
-import { CHARACTER_FIELDS } from './character-fields.js?v=0.5.0';
-import { parseOcrClass, validClass } from './jobs.js?v=0.5.0';
+import { CHARACTER_FIELDS } from './character-fields.js?v=0.6.0';
+import { parseOcrClass, validClass } from './jobs.js?v=0.6.0';
 
 export const OCR_FIELDS = CHARACTER_FIELDS;
 
@@ -68,8 +68,22 @@ export function layoutText(blocks) {
       row.words.push(word);
     } else rows.push({ center, height, words: [word] });
   }
-  return rows.sort((a, b) => a.center - b.center)
-    .map(row => row.words.sort((a, b) => a.bbox.x0 - b.bbox.x0).map(word => word.text.trim()).join(' ')).join('\n');
+  const labelEnd = new RegExp(`\\b(?:${LABELS.map(field => field.pattern).join('|')})[.:= ]*$`, 'i');
+  return rows.sort((a, b) => a.center - b.center).map(row => {
+    const ordered = row.words.sort((a, b) => a.bbox.x0 - b.bbox.x0);
+    let text = '';
+    for (let index = 0; index < ordered.length; index += 1) {
+      const word = ordered[index], previous = ordered[index - 1];
+      const gap = previous ? word.bbox.x0 - previous.bbox.x1 : 0;
+      const height = previous ? Math.min(previous.bbox.y1 - previous.bbox.y0, word.bbox.y1 - word.bbox.y0) : 0;
+      // Keep label/value pairs together, but separate unrelated inventory
+      // quantities and values from other windows on the same screen row.
+      const balanceSuffix = /^MESOS?$/i.test(word.text.trim()) && gap <= height * 4;
+      const separator = previous && gap > height * 2 && !labelEnd.test(text) && !balanceSuffix ? ' | ' : ' ';
+      text += (index ? separator : '') + word.text.trim();
+    }
+    return text;
+  }).join('\n');
 }
 
 export function extractValues(text, blocks = null) {
@@ -97,7 +111,7 @@ export function extractValues(text, blocks = null) {
     const end = matches[index + 1]?.index ?? normalized.length;
     const segment = normalized.slice(match.index + match[0].length, end);
     if (field.kind === 'text') {
-      const lines = segment.trim().split('\n').map(line => line.trim()).filter(Boolean);
+      const lines = segment.trim().split('\n').map(line => line.split('|')[0].trim()).filter(Boolean);
       const first = lines[0]?.match(/^[\p{L}\p{N}_/'() .-]+/u)?.[0]?.trim();
       if (!first || !/\p{L}/u.test(first)) continue;
       if (field.key === 'job' || field.key === 'specialization') {
@@ -152,16 +166,7 @@ export function extractValues(text, blocks = null) {
     }
     if (/^[%~–-]/.test(number.tail)) continue;
     if (field.kind === 'attribute') {
-      if (/BASE/i.test(match[0])) put(field.key, number.value);
-      else {
-        put(`${field.key}Total`, number.value);
-        const parts = number.tail.match(/^\(\s*([\d., ]+)\s*\+\s*([\d., ]+)\s*\)/);
-        const base = parts ? parseInteger(parts[1]) : null;
-        const bonus = parts ? parseInteger(parts[2]) : null;
-        if (base !== null && bonus !== null && base + bonus === number.value) put(field.key, base);
-        else if (!number.rawTail.split('\n')[0].trim() && !/^\s*[(+]/.test(number.rawTail)) put(field.key, number.value);
-        else if (/[()+]/.test(number.tail)) warnings.add(`${field.key.toUpperCase()} base requiere comprobar la suma en la imagen.`);
-      }
+      if (!/BASE/i.test(match[0])) put(`${field.key}Total`, number.value);
       continue;
     }
     if (field.key === 'level' && number.value < 1) continue;

@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#10241f">
   <meta name="description" content="Mide la EXP y los mesos por hora de tus sesiones de MapleStory Classic World.">
   <title>MSproject tracker</title>
-  <link rel="stylesheet" href="styles.css?v=0.5.0">
-  <script type="module" src="app.js?v=0.5.0"></script>
+  <link rel="stylesheet" href="styles.css?v=0.6.0">
+  <script type="module" src="app.js?v=0.6.0"></script>
 </head>
 <body>
   <header class="topbar">
@@ -38,7 +38,7 @@
           </div>
           <div id="profile-progress-fields" class="profile-fields"></div>
           <details class="profile-section"><summary>Atributos AP</summary>
-            <p class="form-hint">Guarda el valor mostrado y la base cuando aparezca el desglose. Un campo vacío significa desconocido.</p>
+            <p class="form-hint">Usa el total que muestra el juego. Por ejemplo, de 222 (204+18) se guarda 222.</p>
             <div id="profile-attribute-fields" class="profile-fields"></div>
           </details>
           <details class="profile-section"><summary>HP, MP y valores de combate</summary>
@@ -152,11 +152,10 @@
     <form id="ocr-review">
       <div id="ocr-candidates"></div>
       <details id="ocr-preserved" hidden><summary>Datos conservados del formulario</summary><p class="form-hint">Ya están rellenados y se conservarán. Márcalos solo si quieres corregirlos.</p><div id="ocr-preserved-fields"></div></details>
-      <details id="ocr-bases" hidden><summary>Bases de AP sin desglose (opcional)</summary><p class="form-hint">El valor mostrado de estos atributos ya está leído. La foto no permite separar base y bonus; puedes completar la base si la conoces.</p><div id="ocr-base-fields"></div></details>
       <details id="ocr-missing" hidden><summary>Campos pendientes de lectura</summary><div id="ocr-missing-fields"></div></details>
       <button id="ocr-apply" type="submit" disabled>Aplicar datos revisados</button>
     </form>
   </dialog>
-  <footer>MSproject tracker <span>v0.5.0 · Proyecto de fans independiente</span></footer>
+  <footer>MSproject tracker <span>v0.6.0 · Proyecto de fans independiente</span></footer>
 </body>
 </html>
