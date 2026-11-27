@@ -6,7 +6,7 @@ import { createSession, stopSession, finishSession } from '../dist/session.js';
 
 // Synthetic character data checks storage behavior, not Classic World rules.
 const data = {
-  name: 'Mapler', job: 'Clase de prueba', level: '32', region: 'Global',
+  name: 'Mapler', job: 'Thief', specialization: 'Bandit', level: '32', region: 'Global',
   str: '4', dex: '', int: '0', luk: '120',
   spPools: [{ name: 'Primer avance', available: '0' }, { name: 'Segundo avance', available: '' }],
   skills: [{ name: 'Habilidad de prueba', rank: '3', pool: 'Segundo avance' }],

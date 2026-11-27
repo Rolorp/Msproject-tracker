@@ -27,7 +27,8 @@ export const PROGRESS_FIELDS = [
 
 export const CHARACTER_FIELDS = [
   { key: 'name', label: 'Nombre del personaje', type: 'text' },
-  { key: 'job', label: 'Job y especialización', type: 'text' },
+  { key: 'job', label: 'Job', type: 'text' },
+  { key: 'specialization', label: 'Especialización', type: 'text' },
   { key: 'level', label: 'Nivel', min: 1 },
   { key: 'fame', label: 'Fame', min: -Number.MAX_SAFE_INTEGER },
   { key: 'apAvailable', label: 'AP libres' },

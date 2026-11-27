@@ -31,7 +31,7 @@ JUMP 100%
 99,958 MESOS`;
 
 const expected = {
-  name: 'TestMage', job: 'MAGICIAN / WIZARD-FIRE/POISON', level: 45,
+  name: 'TestMage', job: 'Magician', specialization: 'Wizard (Fire/Poison)', level: 45,
   currentHp: 611, maxHp: 1054, currentMp: 1923, maxMp: 1978,
   exp: 206845, expPercent: 44, fame: 25,
   strTotal: 4, dexTotal: 4, intTotal: 222, int: 204, lukTotal: 40, luk: 33,

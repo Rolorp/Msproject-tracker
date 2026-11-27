@@ -222,6 +222,18 @@ export function detectPanelRegions(image) {
     .filter(region => region.x1 - region.x0 >= 4 && region.y1 - region.y0 >= 4);
 }
 
+// Fallback anchored to an OCR label instead of the coin's color or window frame.
+export function mesosLabelRegions(blocks, width, height) {
+  const words = (blocks || []).flatMap(block => (block.paragraphs || []).flatMap(paragraph =>
+    (paragraph.lines || []).flatMap(line => line.words || [])));
+  return words.filter(word => /^MES[O0]S?$/i.test(word.text?.trim()) && word.bbox).map(({ bbox }) => {
+    const h = bbox.y1 - bbox.y0;
+    return { label: 'MESOS', kind: 'number', x0: Math.max(0, Math.floor(bbox.x0 - h * 24)),
+      x1: Math.min(width, Math.floor(bbox.x0 - h * .15)),
+      y0: Math.max(0, Math.floor(bbox.y0 - h * .2)), y1: Math.min(height, Math.ceil(bbox.y1 + h * .2)) };
+  }).filter(box => box.x1 > box.x0 && box.y1 > box.y0);
+}
+
 export function resourceParts(image, region) {
   const width = region.x1 - region.x0, height = region.y1 - region.y0;
   const ink = new Uint8Array(width * height);

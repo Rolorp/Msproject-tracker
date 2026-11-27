@@ -32,6 +32,8 @@ Pulsa **Capturar personaje desde una foto** para crear un perfil a partir de una
 
 Puedes leer primero la ficha y después el inventario. Cada lectura rellena los campos seleccionados del mismo formulario y conserva los demás. Utiliza **Nuevo personaje** cuando quieras comenzar otro perfil.
 
+Job y especialización se guardan por separado. El selector admite Warrior (Fighter, Page, Spearman), Magician (Wizard Fire/Poison, Wizard Ice/Lightning, Cleric), Bowman (Hunter, Crossbowman) y Thief (Assassin, Bandit), con especialización opcional. Los perfiles anteriores con ambos valores juntos se separan al editarlos. Catálogo acotado solicitado por el usuario, contrastado el 27 de noviembre de 2026 con [NiaDB Classes](https://meowdb.com/msclassic/classes); disponibilidad oficial pendiente de contraste directo con Nexon. No se aplican reglas de SP a partir de este catálogo.
+
 El perfil conserva nombre, job y especialización, nivel, HP y MP actuales y máximos, EXP absoluta y porcentaje, mesos, Fame, AP libres, atributos mostrados y bases cuando su desglose es legible. Los valores de combate incluyen el rango Attack, Weapon Def., Magic, Magic Def., Accuracy, Evasion, Crit. Rate, Crit. Damage, Speed y Jump. Los campos desconocidos quedan vacíos. Las habilidades y sus SP se registran manualmente.
 
 Selecciona el perfil en **Antes de empezar** para asociarlo a una sesión. Se rellenan nombre, nivel, EXP y mesos registrados. Revisa los valores de inicio y actualiza el perfil si cambió el nivel. La sesión conserva una copia del estado al iniciarla, consultable desde **Perfil usado en esta sesión**, aunque después modifiques el personaje. Esa copia refleja los valores de EXP y mesos usados al iniciar la sesión. El CSV incluye el identificador y la copia del perfil en columnas adicionales.
@@ -55,6 +57,8 @@ Cuando la estructura de las ventanas no se identifica, se utiliza la lectura gen
 La EXP absoluta y su porcentaje se guardan por separado. Un porcentaje solo requiere la tabla por nivel para convertirse en EXP absoluta. Cuando un atributo aparece sin desglose, se conserva su valor mostrado y la base permanece desconocida. Para HP y MP se conserva la fracción actual/máximo. Los valores ambiguos o contradictorios quedan pendientes de corrección. Puedes revisar y corregir el texto OCR para volver a extraer los datos.
 
 Las pruebas incluyen imágenes sintéticas, transcripciones y detección de paneles desplazados o incompletos. Para v0.4.2 se reprodujo la lectura incompleta con la foto de monitor aportada por el usuario y se calibró la lectura por casillas con ese archivo. HP y MP se separan por su barra diagonal y las casillas de AP y mesos se delimitan por su marco para evitar leer los bordes como dígitos. La foto de usuario se conserva fuera del repositorio. La legibilidad, los elementos tapados, los reflejos y la compresión siguen afectando a la lectura y requieren revisar los valores propuestos.
+
+Si no se identifica el saldo por el recuadro del inventario, el lector busca también la etiqueta MESOS y vuelve a leer el importe a su izquierda. Un saldo no reconocido se anuncia como pendiente y puede completarse con otra foto del inventario sin borrar los demás campos aplicados.
 
 ## Cálculos
 

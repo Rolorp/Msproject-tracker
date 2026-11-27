@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detectPanelRegions, resourceParts } from '../dist/ocr-panels.js';
+import { detectPanelRegions, resourceParts, mesosLabelRegions } from '../dist/ocr-panels.js';
 
 function panelImage({ pinkCount = 7, blueCount = 10, offset = 0 } = {}) {
   const width = 1000, height = 800;
@@ -52,6 +52,17 @@ test('una ficha o unos detalles incompletos conservan los campos sin identificac
 
 test('una imagen sin la estructura de las ventanas utiliza la lectura general', () => {
   assert.deepEqual(detectPanelRegions({ data: new Uint8ClampedArray(200 * 200 * 4).fill(255), width: 200, height: 200 }), []);
+});
+
+test('localiza el saldo por su etiqueta cuando no se detecta moneda o marco', () => {
+  const blocks = [{ paragraphs: [{ lines: [{ words: [
+    { text: 'MESOS', bbox: { x0: 300, x1: 350, y0: 100, y1: 115 } },
+    { text: '99,958', bbox: { x0: 200, x1: 260, y0: 100, y1: 115 } }
+  ] }] }] }];
+  const [region] = mesosLabelRegions(blocks, 1000, 800);
+  assert.ok(region.x0 <= 200 && region.x1 >= 260 && region.x1 < 300);
+  assert.ok(region.y0 <= 100 && region.y1 >= 115);
+  assert.deepEqual(mesosLabelRegions([], 1000, 800), []);
 });
 
 test('separa una fracción por la barra diagonal y evita deducirla de una cadena de dígitos', () => {

@@ -1,4 +1,5 @@
-import { detectPanelRegions, resourceParts } from './ocr-panels.js?v=0.4.2';
+import { detectPanelRegions, resourceParts, mesosLabelRegions } from './ocr-panels.js?v=0.4.3';
+import { extractValues } from './ocr-parser.js?v=0.4.3';
 
 export function prepareImage(image) {
   const scale = Math.min(2, 4096 / Math.max(image.naturalWidth, image.naturalHeight));
@@ -62,17 +63,29 @@ function panelImage(source, region) {
   return canvas;
 }
 
+function originalBox(image, analysis, region) {
+  return { ...region, x0: region.x0 * image.naturalWidth / analysis.width, x1: region.x1 * image.naturalWidth / analysis.width,
+    y0: region.y0 * image.naturalHeight / analysis.height, y1: region.y1 * image.naturalHeight / analysis.height };
+}
+
+async function readBalance(worker, image, box) {
+  // Try the original resolution and two segmentations; never accept trailing junk.
+  for (const mode of ['7', '6']) {
+    await worker.setParameters({ tessedit_pageseg_mode: mode, tessedit_char_whitelist: '0123456789., ' });
+    const { data } = await worker.recognize(panelImage(image, box));
+    const raw = data.text.trim();
+    const parsed = extractValues(`MESOS ${raw}`).values.mesos;
+    if (/^\d[\d., ]*$/.test(raw) && parsed !== undefined) return String(parsed);
+  }
+  return '';
+}
+
 export async function recognizeCharacterImage(worker, image, progress, cancelled) {
   const analysis = analysisCanvas(image);
   const context = analysis.getContext('2d', { willReadFrequently: true });
   progress('Detectando ventanas');
   const pixels = context.getImageData(0, 0, analysis.width, analysis.height);
   const regions = detectPanelRegions(pixels);
-  if (!regions.length) {
-    progress('Imagen general');
-    await worker.setParameters({ tessedit_pageseg_mode: '11', preserve_interword_spaces: '1', tessedit_char_whitelist: '' });
-    return (await worker.recognize(prepareImage(image), {}, { text: true, blocks: true })).data;
-  }
   const lines = [];
   for (let index = 0; index < regions.length; index += 1) {
     if (cancelled()) return null;
@@ -84,7 +97,17 @@ export async function recognizeCharacterImage(worker, image, progress, cancelled
       tessedit_char_whitelist: numeric ? '0123456789.,/+-~%() ' : ''
     });
     let text;
-    if (region.label === 'HP' || region.label === 'MP') {
+    if (region.label === 'MESOS') {
+      text = await readBalance(worker, image, originalBox(image, analysis, region));
+    } else if (region.kind === 'job') {
+      // The smaller colored specialization line is often omitted by block OCR.
+      await worker.setParameters({ tessedit_pageseg_mode: '6', tessedit_char_whitelist: '' });
+      const middle = region.y0 + (region.y1 - region.y0) * .55;
+      const main = await worker.recognize(panelImage(image, originalBox(image, analysis, region)));
+      await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: '' });
+      const specialization = await worker.recognize(panelImage(image, originalBox(image, analysis, { ...region, y0: middle })));
+      text = `${main.data.text.trim().split('\n')[0]}\nSPECIALIZATION ${specialization.data.text.trim()}`;
+    } else if (region.label === 'HP' || region.label === 'MP') {
       const parts = resourceParts(pixels, region);
       const values = [];
       for (const part of parts) {
@@ -99,14 +122,28 @@ export async function recognizeCharacterImage(worker, image, progress, cancelled
       }
     } else {
       const source = numeric ? analysis : image;
-      const box = numeric ? region : {
-        ...region, x0: region.x0 * image.naturalWidth / analysis.width, x1: region.x1 * image.naturalWidth / analysis.width,
-        y0: region.y0 * image.naturalHeight / analysis.height, y1: region.y1 * image.naturalHeight / analysis.height
-      };
+      const box = numeric ? region : originalBox(image, analysis, region);
       const { data } = await worker.recognize(panelImage(source, box));
       text = numeric ? data.text.trim().replace(/^[^\d.+-]+/, '') : data.text.trim();
     }
     lines.push(`${region.label} ${text}`);
+  }
+  if (extractValues(lines.join('\n')).values.mesos === undefined && !cancelled()) {
+    progress('Buscando saldo del inventario');
+    await worker.setParameters({ tessedit_pageseg_mode: '11', tessedit_char_whitelist: '' });
+    const prepared = prepareImage(image);
+    const general = await worker.recognize(prepared, {}, { text: true, blocks: true });
+    const parsed = extractValues(general.data.text, general.data.blocks);
+    if (!regions.length) lines.push(parsed.text);
+    const generalMesos = parsed.values.mesos;
+    if (generalMesos !== undefined) lines.push(`MESOS ${generalMesos}`);
+    else {
+      for (const region of mesosLabelRegions(general.data.blocks, prepared.width, prepared.height)) {
+        if (cancelled()) return null;
+        const value = await readBalance(worker, prepared, region);
+        if (value) lines.push(`MESOS ${value}`);
+      }
+    }
   }
   return { text: lines.join('\n'), blocks: null };
 }

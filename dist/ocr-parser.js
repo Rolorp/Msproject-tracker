@@ -1,4 +1,5 @@
-import { CHARACTER_FIELDS } from './character-fields.js?v=0.4.2';
+import { CHARACTER_FIELDS } from './character-fields.js?v=0.4.3';
+import { parseOcrClass, validClass } from './jobs.js?v=0.4.3';
 
 export const OCR_FIELDS = CHARACTER_FIELDS;
 
@@ -12,6 +13,7 @@ const LABELS = [
   { key: 'apAvailable', pattern: 'ABILITY\\s*POINTS?|AP\\s+(?:FREE|AVAILABLE|LIBRES)' },
   { key: 'name', pattern: 'NAME|NOMBRE', kind: 'text' },
   { key: 'job', pattern: 'JOB|CLASS|CLASE', kind: 'text' },
+  { key: 'specialization', pattern: 'SPECIALI[ZS]ATION|ESPECIALIZACI[ÓO]N', kind: 'text' },
   { key: 'level', pattern: 'LEVEL|LVL?|NIVEL' },
   { key: 'exp', pattern: 'EXP(?:ERIENCE)?', kind: 'exp' },
   { key: 'mesos', pattern: 'MESOS?', kind: 'mesos' },
@@ -98,10 +100,13 @@ export function extractValues(text, blocks = null) {
       const lines = segment.trim().split('\n').map(line => line.trim()).filter(Boolean);
       const first = lines[0]?.match(/^[\p{L}\p{N}_/'() .-]+/u)?.[0]?.trim();
       if (!first || !/\p{L}/u.test(first)) continue;
-      const specialization = lines.slice(1).find(line => /^[A-Z][A-Z /-]{2,}$/.test(line));
-      const job = field.key === 'job' && specialization && /^[A-Z][A-Z /-]{2,}$/.test(specialization)
-        ? `${first} / ${specialization}` : first;
-      put(field.key, job);
+      if (field.key === 'job' || field.key === 'specialization') {
+        for (const line of [first, ...lines.slice(1)]) {
+          const parsed = parseOcrClass(line);
+          if (parsed.job) put('job', parsed.job);
+          if (parsed.specialization) put('specialization', parsed.specialization);
+        }
+      } else put(field.key, first);
       continue;
     }
     if (field.kind === 'percent') {
@@ -158,6 +163,10 @@ export function extractValues(text, blocks = null) {
       const percentage = number.tail.match(/\(\s*(\d+(?:[.,]\d+)?)\s*%/);
       if (percentage) put('expPercent', Number(percentage[1].replace(',', '.')));
     }
+  }
+  if (values.specialization && !validClass(values.job, values.specialization)) {
+    delete values.specialization;
+    warnings.add('Revisa el job y su especialización en la imagen.');
   }
   return { values, warnings: [...warnings], text: normalized };
 }
