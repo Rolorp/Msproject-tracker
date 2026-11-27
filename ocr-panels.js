@@ -82,7 +82,7 @@ function valueRegions(column, rows, labels, kinds = {}, valueWidth = 1.85) {
   }));
 }
 
-function framedBox(image, area, minimumWidth, minimumHeight, maximumHeight) {
+function framedBox(image, area, minimumWidth, minimumHeight, maximumHeight, darkness = 135) {
   const { data, width, height } = image;
   const lines = [];
   for (let y = Math.max(1, Math.floor(area.y0)); y < Math.min(height - 1, area.y1); y += 1) {
@@ -91,7 +91,7 @@ function framedBox(image, area, minimumWidth, minimumHeight, maximumHeight) {
       let dark = false;
       for (let dy = -1; dy <= 1; dy += 1) {
         const p = ((y + dy) * width + x) * 4;
-        if (data[p] * .299 + data[p + 1] * .587 + data[p + 2] * .114 < 135) dark = true;
+        if (data[p] * .299 + data[p + 1] * .587 + data[p + 2] * .114 < darkness) dark = true;
       }
       if (dark) {
         if (start === null) start = x;
@@ -135,7 +135,8 @@ function balanceRegion(image, mask, coins) {
   for (const coin of coins) {
     const h = coin.height;
     if (coin.width / h < .6 || coin.width / h > 1.8 || coin.fill < .65 || h > Math.min(width, height) * .05) continue;
-    const frame = framedBox(image, { x0: coin.x1 - h, x1: coin.x1 + h * 22, y0: coin.y0 - h, y1: coin.y1 + h }, h * 7, h * .7, h * 2);
+    const area = { x0: coin.x1 - h, x1: coin.x1 + h * 22, y0: coin.y0 - h, y1: coin.y1 + h };
+    const frame = framedBox(image, area, h * 7, h * .7, h * 2) ?? framedBox(image, area, h * 7, h * .7, h * 2, 165);
     if (frame && frame.x0 >= coin.x1 - h * .15 && frame.x0 < coin.x1 + h * 3) {
       let blue = 0, count = 0;
       for (let y = frame.y0; y < frame.y1; y += 1) for (let x = frame.x1 + 5; x < Math.min(width, frame.x1 + h * 3); x += 1) {
@@ -154,13 +155,13 @@ function balanceRegion(image, mask, coins) {
         if (y > top + h * .3 && y < bottom - h * .3) continue;
         samples += 1;
         const p = (y * width + x) * 4;
-        if (Math.min(data[p], data[p + 1], data[p + 2]) > 210 && Math.max(data[p], data[p + 1], data[p + 2]) - Math.min(data[p], data[p + 1], data[p + 2]) < 45) white += 1;
+        if (!(mask[y * width + x] & BLUE) && Math.min(data[p], data[p + 1], data[p + 2]) > 166 && Math.max(data[p], data[p + 1], data[p + 2]) - Math.min(data[p], data[p + 1], data[p + 2]) < 38) white += 1;
       }
       if (white / samples > .45) {
         if (start === null) start = x;
         end = x + 1;
         gap = 0;
-      } else if (start !== null && ++gap > h * .8) break;
+      } else if (start !== null && ++gap > h * 1.5) break;
       if (start === null && x - coin.x1 > h * 3) break;
     }
     if (start === null || end - start < h * 7) continue;
@@ -201,7 +202,13 @@ export function detectPanelRegions(image) {
   const regions = [];
   if (character) {
     const { column, greenRows, pinkRows, rowHeight } = character;
-    regions.push(...valueRegions(column, pinkRows, ['NAME', 'JOB', 'LEVEL', 'HP', 'MP', 'EXP', 'FAME'], { NAME: 'text', JOB: 'job' }));
+    const jobRow = pinkRows[1];
+    const jobLabel = components(mask, PINK, width, height, visited, queue).filter(box =>
+      box.x0 < column.x1 && box.x1 > column.x0 && box.width >= column.width * .4 && box.y0 <= jobRow.y0 + rowHeight * .4 && box.y1 >= jobRow.y1 - rowHeight * .4
+    ).sort((a, b) => b.width - a.width)[0];
+    const basic = valueRegions(column, pinkRows, ['NAME', 'JOB', 'LEVEL', 'HP', 'MP', 'EXP', 'FAME'], { NAME: 'text', JOB: 'job' });
+    if (jobLabel) basic[1].x0 = jobLabel.x1 + jobLabel.width * .04;
+    regions.push(...basic);
     regions.push(...valueRegions(column, greenRows, ['STR', 'DEX', 'INT', 'LUK']));
     const apArea = { x0: column.x1 + column.width * .45, x1: column.x1 + column.width * 1.55, y0: greenRows[3].y1 + rowHeight * .4, y1: greenRows[3].y1 + rowHeight * 2 };
     const apBox = framedBox(image, apArea, column.width * .35, rowHeight * .5, rowHeight * 1.6);
@@ -227,11 +234,11 @@ export function detectPanelRegions(image) {
 export function mesosLabelRegions(blocks, width, height) {
   const words = (blocks || []).flatMap(block => (block.paragraphs || []).flatMap(paragraph =>
     (paragraph.lines || []).flatMap(line => line.words || [])));
-  return words.filter(word => /^MES[O0]S?$/i.test(word.text?.trim()) && word.bbox).map(({ bbox }) => {
+  return words.filter(word => /^MES[O0][S5]?$/i.test(word.text?.trim()) && word.bbox).map(({ bbox }) => {
     const h = bbox.y1 - bbox.y0;
     return { label: 'MESOS', kind: 'number', x0: Math.max(0, Math.floor(bbox.x0 - h * 24)),
       x1: Math.min(width, Math.floor(bbox.x0 - h * .15)),
-      y0: Math.max(0, Math.floor(bbox.y0 - h * .2)), y1: Math.min(height, Math.ceil(bbox.y1 + h * .2)) };
+      y0: Math.max(0, Math.floor(bbox.y0 - h * .55)), y1: Math.min(height, Math.ceil(bbox.y1 + h * .55)) };
   }).filter(box => box.x1 > box.x0 && box.y1 > box.y0);
 }
 

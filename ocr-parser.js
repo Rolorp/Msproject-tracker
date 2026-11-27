@@ -1,5 +1,5 @@
-import { CHARACTER_FIELDS } from './character-fields.js?v=0.6.0';
-import { parseOcrClass, validClass } from './jobs.js?v=0.6.0';
+import { CHARACTER_FIELDS } from './character-fields.js?v=0.6.1';
+import { parseOcrClass, validClass } from './jobs.js?v=0.6.1';
 
 export const OCR_FIELDS = CHARACTER_FIELDS;
 
@@ -112,7 +112,8 @@ export function extractValues(text, blocks = null) {
     const segment = normalized.slice(match.index + match[0].length, end);
     if (field.kind === 'text') {
       const lines = segment.trim().split('\n').map(line => line.split('|')[0].trim()).filter(Boolean);
-      const first = lines[0]?.match(/^[\p{L}\p{N}_/'() .-]+/u)?.[0]?.trim();
+      const pattern = field.key === 'name' ? /^[\p{L}\p{N}_/'() .-]+/u : /^[\p{L}\p{N}_/'(), .-]+/u;
+      const first = lines[0]?.match(pattern)?.[0]?.trim();
       if (!first || !/\p{L}/u.test(first)) continue;
       if (field.key === 'job' || field.key === 'specialization') {
         for (const line of [first, ...lines.slice(1)]) {

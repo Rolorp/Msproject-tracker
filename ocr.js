@@ -1,7 +1,7 @@
-import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.6.0';
-import { recognizeCharacterImage, recognizeSelectedRegion } from './ocr-image.js?v=0.6.0';
-import { JOBS, validClass } from './jobs.js?v=0.6.0';
-import { reviewGroup } from './ocr-review.js?v=0.6.0';
+import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.6.1';
+import { recognizeCharacterImage, recognizeSelectedRegion } from './ocr-image.js?v=0.6.1';
+import { JOBS, validClass } from './jobs.js?v=0.6.1';
+import { reviewGroup } from './ocr-review.js?v=0.6.1';
 
 function initializeWorker(tesseract, options) {
   return new Promise((resolve, reject) => {
@@ -245,7 +245,7 @@ export function setupImageImport() {
       await preview.decode();
       if (selectedFile !== file) return;
       preview.hidden = false;
-      imageInfo.textContent = `Lector v0.6.0 · Foto ${preview.naturalWidth} × ${preview.naturalHeight}`;
+      imageInfo.textContent = `Lector v0.6.1 · Foto ${preview.naturalWidth} × ${preview.naturalHeight}`;
       imageInfo.hidden = false;
       regionButton.disabled = false;
       status.textContent = 'Imagen lista. Pulsa Leer imagen para extraer los valores.';
