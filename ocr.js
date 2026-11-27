@@ -1,7 +1,7 @@
-import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.6.1';
-import { recognizeCharacterImage, recognizeSelectedRegion } from './ocr-image.js?v=0.6.1';
-import { JOBS, validClass } from './jobs.js?v=0.6.1';
-import { reviewGroup } from './ocr-review.js?v=0.6.1';
+import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.6.2';
+import { recognizeCharacterImage, recognizeSelectedRegion } from './ocr-image.js?v=0.6.2';
+import { JOBS, validClass } from './jobs.js?v=0.6.2';
+import { reviewGroup } from './ocr-review.js?v=0.6.2';
 
 function initializeWorker(tesseract, options) {
   return new Promise((resolve, reject) => {
@@ -133,7 +133,9 @@ export function setupImageImport() {
       checkbox.type = 'checkbox';
       checkbox.name = key;
       checkbox.checked = detected;
-      selectionLabel.append(checkbox, `Aplicar ${field.label}`);
+      selectionLabel.append(checkbox, field.key === 'mesos' && !detected
+        ? (group === 'missing' ? 'Completar mesos' : 'Editar saldo de mesos')
+        : `Aplicar ${field.label}`);
       const valueLabel = document.createElement('label');
       valueLabel.textContent = field.label;
       const isClass = ['job', 'specialization'].includes(key);
@@ -142,7 +144,10 @@ export function setupImageImport() {
         input.dataset.classField = key;
         const options = key === 'job' ? Object.keys(JOBS) : JOBS[result.values.job || targetForm.elements.job.value] || [];
         input.append(new Option(key === 'job' ? 'Selecciona un job' : 'Sin especificar / primer avance', ''), ...options.map(name => new Option(name, name)));
-      } else input.type = field.type === 'text' ? 'text' : 'number';
+      } else {
+        input.type = field.type === 'text' ? 'text' : 'number';
+        if (key === 'mesos') input.inputMode = 'numeric';
+      }
       input.step = field.type === 'decimal' ? 'any' : '1';
       input.min = control.min || field.min || 0;
       input.max = Number.MAX_SAFE_INTEGER;
@@ -245,7 +250,7 @@ export function setupImageImport() {
       await preview.decode();
       if (selectedFile !== file) return;
       preview.hidden = false;
-      imageInfo.textContent = `Lector v0.6.1 · Foto ${preview.naturalWidth} × ${preview.naturalHeight}`;
+      imageInfo.textContent = `Lector v0.6.2 · Foto ${preview.naturalWidth} × ${preview.naturalHeight}`;
       imageInfo.hidden = false;
       regionButton.disabled = false;
       status.textContent = 'Imagen lista. Pulsa Leer imagen para extraer los valores.';

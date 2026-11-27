@@ -131,7 +131,7 @@ function framedBox(image, area, minimumWidth, minimumHeight, maximumHeight, dark
 
 function balanceRegion(image, mask, coins) {
   const { data, width, height } = image;
-  let best = null;
+  let best = null, fallback = null;
   for (const coin of coins) {
     const h = coin.height;
     if (coin.width / h < .6 || coin.width / h > 1.8 || coin.fill < .65 || h > Math.min(width, height) * .05) continue;
@@ -143,8 +143,10 @@ function balanceRegion(image, mask, coins) {
         count += 1;
         if (mask[y * width + x] & BLUE) blue += 1;
       }
-      if (count && blue / count > .2 && (!best || frame.x1 - frame.x0 > best.x1 - best.x0)) best = { ...frame, label: 'MESOS', kind: 'number', labelBox: { x0: frame.x1 + 2, x1: Math.min(width, frame.x1 + h * 5), y0: Math.max(0, frame.y0 - h * .2), y1: Math.min(height, frame.y1 + h * .2) } };
-      if (best) continue;
+      if (count && blue / count > .2) {
+        if (!best || frame.x1 - frame.x0 > best.x1 - best.x0) best = { ...frame, label: 'MESOS', kind: 'number' };
+        continue;
+      }
     }
     const top = Math.max(0, Math.floor(coin.y0 - h * .35));
     const bottom = Math.min(height, Math.ceil(coin.y1 + h * .35));
@@ -164,7 +166,35 @@ function balanceRegion(image, mask, coins) {
       } else if (start !== null && ++gap > h * 1.5) break;
       if (start === null && x - coin.x1 > h * 3) break;
     }
-    if (start === null || end - start < h * 7) continue;
+    let centered = false;
+    if (start === null || end - start < h * 7) {
+      // Glare can obscure the top and bottom of the white field. Find the
+      // long white span on the same line as the coin, then the blue suffix.
+      start = end = null;
+      centered = true;
+      let blueRun = 0, brightColumns = 0;
+      const from = Math.floor(coin.y0 + h * .2), to = Math.ceil(coin.y1 - h * .2);
+      for (let x = coin.x1; x < Math.min(width, coin.x1 + h * 24); x += 1) {
+        let white = 0, blue = 0;
+        for (let y = from; y < to; y += 1) {
+          const p = (y * width + x) * 4;
+          if (mask[y * width + x] & BLUE) blue += 1;
+          else if (Math.min(data[p], data[p + 1], data[p + 2]) > 175) white += 1;
+        }
+        if (white > (to - from) * .55) {
+          if (start === null) start = x;
+          if (x - start < h * 7) brightColumns += 1;
+        }
+        if (start === null && x - coin.x1 > h * 3) break;
+        if (start !== null && x - start >= h * 7 && brightColumns < h * 6) break;
+        blueRun = blue > (to - from) * .45 ? blueRun + 1 : 0;
+        if (start !== null && x - start >= h * 7 && blueRun >= Math.max(3, Math.ceil(h * .24))) {
+          end = x - blueRun + 1;
+          break;
+        }
+      }
+    }
+    if (start === null || end === null || end - start < h * 7) continue;
     let blue = 0, sampled = 0;
     for (let y = top; y < bottom; y += 1) {
       for (let x = end + 2; x < Math.min(width, end + h * 3); x += 1) {
@@ -172,12 +202,14 @@ function balanceRegion(image, mask, coins) {
         if (mask[y * width + x] & BLUE) blue += 1;
       }
     }
-    if (sampled && blue / sampled > .2 && (!best || end - start > best.x1 - best.x0)) {
-      best = { label: 'MESOS', kind: 'number', x0: start, x1: end, y0: top - h * .15, y1: bottom + h * .15,
-        labelBox: { x0: end + 2, x1: Math.min(width, end + h * 5), y0: top - h * .15, y1: bottom + h * .15 } };
+    if (sampled && blue / sampled > .2) {
+      const candidate = { label: 'MESOS', kind: 'number', x0: start, x1: end, y0: top - h * .15, y1: bottom + h * .15 };
+      if (centered) {
+        if (!fallback || end - start > fallback.x1 - fallback.x0) fallback = candidate;
+      } else if (!best || end - start > best.x1 - best.x0) best = candidate;
     }
   }
-  return best;
+  return best ?? fallback;
 }
 
 export function detectPanelRegions(image) {
