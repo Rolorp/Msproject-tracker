@@ -1,6 +1,6 @@
-import { detectPanelRegions, resourceParts, mesosLabelRegions } from './ocr-panels.js?v=0.4.5';
-import { extractValues } from './ocr-parser.js?v=0.4.5';
-import { extractHudClass, rightAlignedBalance } from './ocr-evidence.js?v=0.4.5';
+import { detectPanelRegions, resourceParts, mesosLabelRegions } from './ocr-panels.js?v=0.4.6';
+import { extractValues } from './ocr-parser.js?v=0.4.6';
+import { extractHudClass, rightAlignedBalance, confirmedBalance } from './ocr-evidence.js?v=0.4.6';
 
 const balanceLabel = text => /^MES[O0][S5]?$/.test(text.toUpperCase().replace(/[^A-Z0-9]/g, ''));
 
@@ -82,9 +82,9 @@ async function readBalance(worker, image, box) {
     const { data } = await worker.recognize(crop, {}, { text: true, blocks: true });
     const raw = data.text.trim();
     const parsed = extractValues(`MESOS ${raw}`).values.mesos;
-    if (/^\d[\d., ]*$/.test(raw) && parsed !== undefined && data.confidence >= 70 && rightAlignedBalance(data, crop.width, crop.height)) readings.push(parsed);
+    readings.push({ value: /^\d[\d., ]*$/.test(raw) ? parsed : undefined, aligned: rightAlignedBalance(data, crop.width, crop.height) });
   }
-  return readings.length === 2 && readings[0] === readings[1] ? String(readings[0]) : '';
+  return confirmedBalance(readings);
 }
 
 export async function recognizeCharacterImage(worker, image, progress, cancelled) {
@@ -109,7 +109,7 @@ export async function recognizeCharacterImage(worker, image, progress, cancelled
       const label = region.labelBox && await worker.recognize(panelImage(image, originalBox(image, analysis, region.labelBox), true));
       text = await readBalance(worker, image, originalBox(image, analysis, region));
       // A white-on-blue label may be unreadable. The framed balance still
-      // requires two confident, complete readings aligned to its right edge.
+      // requires two complete readings aligned to its right edge.
       if (label && !balanceLabel(label.data.text) && !text) progress('Saldo sin confirmar');
     } else if (region.kind === 'job') {
       // The smaller colored specialization line is often omitted by block OCR.

@@ -1,4 +1,11 @@
-import { parseOcrClass } from './jobs.js?v=0.4.5';
+import { parseOcrClass } from './jobs.js?v=0.4.6';
+
+export function confirmedBalance(readings) {
+  // Tesseract's confidence is poorly calibrated for the game's pixel font:
+  // correct, complete readings can score below 10 after resizing a phone photo.
+  if (readings.length < 2 || readings.some(reading => !reading.aligned || !Number.isSafeInteger(reading.value) || reading.value < 0)) return '';
+  return readings.every(reading => reading.value === readings[0].value) ? String(readings[0].value) : '';
+}
 
 export function rightAlignedBalance(data, width, height, margin = 8) {
   const words = (data.blocks || []).flatMap(block => (block.paragraphs || []).flatMap(paragraph =>
