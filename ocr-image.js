@@ -1,6 +1,6 @@
-import { detectPanelRegions, resourceParts, mesosLabelRegions } from './ocr-panels.js?v=0.4.4';
-import { extractValues } from './ocr-parser.js?v=0.4.4';
-import { extractHudClass } from './ocr-evidence.js?v=0.4.4';
+import { detectPanelRegions, resourceParts, mesosLabelRegions } from './ocr-panels.js?v=0.4.5';
+import { extractValues } from './ocr-parser.js?v=0.4.5';
+import { extractHudClass, rightAlignedBalance } from './ocr-evidence.js?v=0.4.5';
 
 const balanceLabel = text => /^MES[O0][S5]?$/.test(text.toUpperCase().replace(/[^A-Z0-9]/g, ''));
 
@@ -78,10 +78,11 @@ async function readBalance(worker, image, box) {
   const readings = [];
   for (const mode of ['7', '6']) {
     await worker.setParameters({ tessedit_pageseg_mode: mode, tessedit_char_whitelist: '0123456789., ' });
-    const { data } = await worker.recognize(panelImage(image, box));
+    const crop = panelImage(image, box);
+    const { data } = await worker.recognize(crop, {}, { text: true, blocks: true });
     const raw = data.text.trim();
     const parsed = extractValues(`MESOS ${raw}`).values.mesos;
-    if (/^\d[\d., ]*$/.test(raw) && parsed !== undefined && data.confidence >= 50) readings.push(parsed);
+    if (/^\d[\d., ]*$/.test(raw) && parsed !== undefined && data.confidence >= 70 && rightAlignedBalance(data, crop.width, crop.height)) readings.push(parsed);
   }
   return readings.length === 2 && readings[0] === readings[1] ? String(readings[0]) : '';
 }
@@ -106,7 +107,10 @@ export async function recognizeCharacterImage(worker, image, progress, cancelled
     if (region.label === 'MESOS') {
       await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: '' });
       const label = region.labelBox && await worker.recognize(panelImage(image, originalBox(image, analysis, region.labelBox), true));
-      text = label && balanceLabel(label.data.text) ? await readBalance(worker, image, originalBox(image, analysis, region)) : '';
+      text = await readBalance(worker, image, originalBox(image, analysis, region));
+      // A white-on-blue label may be unreadable. The framed balance still
+      // requires two confident, complete readings aligned to its right edge.
+      if (label && !balanceLabel(label.data.text) && !text) progress('Saldo sin confirmar');
     } else if (region.kind === 'job') {
       // The smaller colored specialization line is often omitted by block OCR.
       await worker.setParameters({ tessedit_pageseg_mode: '6', tessedit_char_whitelist: '' });
