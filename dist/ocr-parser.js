@@ -1,5 +1,5 @@
-import { CHARACTER_FIELDS } from './character-fields.js?v=0.4.3';
-import { parseOcrClass, validClass } from './jobs.js?v=0.4.3';
+import { CHARACTER_FIELDS } from './character-fields.js?v=0.4.4';
+import { parseOcrClass, validClass } from './jobs.js?v=0.4.4';
 
 export const OCR_FIELDS = CHARACTER_FIELDS;
 
@@ -120,12 +120,18 @@ export function extractValues(text, blocks = null) {
         continue;
       }
     }
-    let number = readNumber(segment);
-    if (field.kind === 'mesos' && !number) {
+    if (field.kind === 'mesos') {
+      // The inventory places its balance BEFORE the label. Never borrow a
+      // quantity from the following inventory/chat row when that line ends.
       const prefix = normalized.slice(0, match.index).split('\n').pop();
-      const suffix = prefix.match(/(-?\d[\d.,]*)\s*$/);
-      number = suffix ? readNumber(suffix[1]) : null;
+      const suffix = prefix.match(/(-?\d[\d., ]*)[ \t]*$/);
+      const before = suffix ? readNumber(suffix[1]) : null;
+      const after = readNumber(segment.split(/\r?\n/)[0]);
+      if (before?.value >= 0) put('mesos', before.value);
+      if (after?.value >= 0 && !after.tail) put('mesos', after.value);
+      continue;
     }
+    let number = readNumber(segment);
     if (!number || (!field.signed && number.value < 0)) continue;
     if (field.kind === 'resource') {
       const suffix = field.key === 'hp' ? 'Hp' : 'Mp';

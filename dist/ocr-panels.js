@@ -142,7 +142,7 @@ function balanceRegion(image, mask, coins) {
         count += 1;
         if (mask[y * width + x] & BLUE) blue += 1;
       }
-      if (count && blue / count > .2 && (!best || frame.x1 - frame.x0 > best.x1 - best.x0)) best = { ...frame, label: 'MESOS', kind: 'number' };
+      if (count && blue / count > .2 && (!best || frame.x1 - frame.x0 > best.x1 - best.x0)) best = { ...frame, label: 'MESOS', kind: 'number', labelBox: { x0: frame.x1 + 2, x1: Math.min(width, frame.x1 + h * 5), y0: Math.max(0, frame.y0 - h * .2), y1: Math.min(height, frame.y1 + h * .2) } };
       if (best) continue;
     }
     const top = Math.max(0, Math.floor(coin.y0 - h * .35));
@@ -172,7 +172,8 @@ function balanceRegion(image, mask, coins) {
       }
     }
     if (sampled && blue / sampled > .2 && (!best || end - start > best.x1 - best.x0)) {
-      best = { label: 'MESOS', kind: 'number', x0: start, x1: end, y0: top - h * .15, y1: bottom + h * .15 };
+      best = { label: 'MESOS', kind: 'number', x0: start, x1: end, y0: top - h * .15, y1: bottom + h * .15,
+        labelBox: { x0: end + 2, x1: Math.min(width, end + h * 5), y0: top - h * .15, y1: bottom + h * .15 } };
     }
   }
   return best;

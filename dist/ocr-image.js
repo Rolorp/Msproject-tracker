@@ -1,5 +1,8 @@
-import { detectPanelRegions, resourceParts, mesosLabelRegions } from './ocr-panels.js?v=0.4.3';
-import { extractValues } from './ocr-parser.js?v=0.4.3';
+import { detectPanelRegions, resourceParts, mesosLabelRegions } from './ocr-panels.js?v=0.4.4';
+import { extractValues } from './ocr-parser.js?v=0.4.4';
+import { extractHudClass } from './ocr-evidence.js?v=0.4.4';
+
+const balanceLabel = text => /^MES[O0][S5]?$/.test(text.toUpperCase().replace(/[^A-Z0-9]/g, ''));
 
 export function prepareImage(image) {
   const scale = Math.min(2, 4096 / Math.max(image.naturalWidth, image.naturalHeight));
@@ -33,7 +36,7 @@ function analysisCanvas(image) {
   return canvas;
 }
 
-function panelImage(source, region) {
+function panelImage(source, region, invert = false) {
   const height = region.y1 - region.y0;
   const scale = 96 / height;
   const margin = 8;
@@ -54,7 +57,9 @@ function panelImage(source, region) {
     maximum = Math.max(maximum, gray);
   }
   for (let i = 0; i < pixels.data.length; i += 4) {
-    const gray = maximum > minimum ? (pixels.data[i] - minimum) * 255 / (maximum - minimum) : pixels.data[i];
+    let gray = maximum > minimum ? (pixels.data[i] - minimum) * 255 / (maximum - minimum) : pixels.data[i];
+    const x = i / 4 % canvas.width, y = Math.floor(i / 4 / canvas.width);
+    if (invert && x >= margin && x < canvas.width - margin && y >= margin && y < canvas.height - margin) gray = 255 - gray;
     pixels.data[i] = gray;
     pixels.data[i + 1] = gray;
     pixels.data[i + 2] = gray;
@@ -70,14 +75,15 @@ function originalBox(image, analysis, region) {
 
 async function readBalance(worker, image, box) {
   // Try the original resolution and two segmentations; never accept trailing junk.
+  const readings = [];
   for (const mode of ['7', '6']) {
     await worker.setParameters({ tessedit_pageseg_mode: mode, tessedit_char_whitelist: '0123456789., ' });
     const { data } = await worker.recognize(panelImage(image, box));
     const raw = data.text.trim();
     const parsed = extractValues(`MESOS ${raw}`).values.mesos;
-    if (/^\d[\d., ]*$/.test(raw) && parsed !== undefined) return String(parsed);
+    if (/^\d[\d., ]*$/.test(raw) && parsed !== undefined && data.confidence >= 50) readings.push(parsed);
   }
-  return '';
+  return readings.length === 2 && readings[0] === readings[1] ? String(readings[0]) : '';
 }
 
 export async function recognizeCharacterImage(worker, image, progress, cancelled) {
@@ -98,7 +104,9 @@ export async function recognizeCharacterImage(worker, image, progress, cancelled
     });
     let text;
     if (region.label === 'MESOS') {
-      text = await readBalance(worker, image, originalBox(image, analysis, region));
+      await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: '' });
+      const label = region.labelBox && await worker.recognize(panelImage(image, originalBox(image, analysis, region.labelBox), true));
+      text = label && balanceLabel(label.data.text) ? await readBalance(worker, image, originalBox(image, analysis, region)) : '';
     } else if (region.kind === 'job') {
       // The smaller colored specialization line is often omitted by block OCR.
       await worker.setParameters({ tessedit_pageseg_mode: '6', tessedit_char_whitelist: '' });
@@ -127,6 +135,17 @@ export async function recognizeCharacterImage(worker, image, progress, cancelled
       text = numeric ? data.text.trim().replace(/^[^\d.+-]+/, '') : data.text.trim();
     }
     lines.push(`${region.label} ${text}`);
+  }
+  if (image.naturalWidth && !cancelled()) {
+    progress('Especialización en la barra inferior');
+    const hud = document.createElement('canvas');
+    hud.width = Math.round(image.naturalWidth * .6);
+    hud.height = Math.round(image.naturalHeight * .4);
+    hud.getContext('2d').drawImage(image, 0, image.naturalHeight - hud.height, hud.width, hud.height, 0, 0, hud.width, hud.height);
+    await worker.setParameters({ tessedit_pageseg_mode: '11', tessedit_char_whitelist: '' });
+    const reading = await worker.recognize(hud, {}, { text: true, blocks: true });
+    const hudClass = extractHudClass(reading.data.blocks, extractValues(lines.join('\n')).values.name);
+    if (hudClass) lines.push(`JOB ${hudClass.job}\nSPECIALIZATION ${hudClass.specialization}`);
   }
   if (extractValues(lines.join('\n')).values.mesos === undefined && !cancelled()) {
     progress('Buscando saldo del inventario');

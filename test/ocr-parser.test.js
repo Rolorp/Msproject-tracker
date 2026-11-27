@@ -31,6 +31,14 @@ test('retira valores contradictorios y permite repeticiones idénticas', () => {
   assert.equal(result.warnings.length, 1);
 });
 
+test('asocia mesos al saldo de su propia línea y no a cantidades de otras filas', () => {
+  assert.deepEqual(extractValues('99,958 MESOS\n2\nLEVEL 45').values, { mesos: 99958, level: 45 });
+  assert.deepEqual(extractValues('MESOS\n2').values, {});
+  assert.deepEqual(extractValues('MESOS 2').values, { mesos: 2 });
+  assert.deepEqual(extractValues('99,958 MESOS 2').values, {});
+  assert.deepEqual(extractValues('MESOS 99)').values, {});
+});
+
 test('identifica etiquetas compactas y ataques explícitos sin interpretar palabras parecidas', () => {
   assert.deepEqual(extractValues('Lv.32\nW.ATK 42\nM.ATK 75\nAvoidability 23\nLEVELING 100\nATTACK 10~20').values, {
     level: 32, weaponAttack: 42, magicAttack: 75, avoidability: 23, attackMin: 10, attackMax: 20
