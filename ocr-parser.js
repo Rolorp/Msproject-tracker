@@ -1,4 +1,4 @@
-import { CHARACTER_FIELDS } from './character-fields.js';
+import { CHARACTER_FIELDS } from './character-fields.js?v=0.4.1';
 
 export const OCR_FIELDS = CHARACTER_FIELDS;
 
