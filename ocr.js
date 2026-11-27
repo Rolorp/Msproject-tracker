@@ -1,6 +1,7 @@
-import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.4.3';
-import { recognizeCharacterImage } from './ocr-image.js?v=0.4.3';
-import { JOBS, validClass } from './jobs.js?v=0.4.3';
+import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.4.4';
+import { recognizeCharacterImage } from './ocr-image.js?v=0.4.4';
+import { JOBS, validClass } from './jobs.js?v=0.4.4';
+import { reviewGroup } from './ocr-review.js?v=0.4.4';
 
 function initializeWorker(tesseract, options) {
   return new Promise((resolve, reject) => {
@@ -30,6 +31,10 @@ export function setupImageImport() {
   const candidates = document.getElementById('ocr-candidates');
   const missing = document.getElementById('ocr-missing-fields');
   const missingPanel = document.getElementById('ocr-missing');
+  const bases = document.getElementById('ocr-base-fields');
+  const preserved = document.getElementById('ocr-preserved-fields');
+  const basesPanel = document.getElementById('ocr-bases');
+  const preservedPanel = document.getElementById('ocr-preserved');
   const readButton = document.getElementById('ocr-read');
   const extractButton = document.getElementById('ocr-extract');
   const applyButton = document.getElementById('ocr-apply');
@@ -38,6 +43,11 @@ export function setupImageImport() {
   let worker = null;
   let generation = 0;
   let selectedFile = null;
+
+  function clearReview() {
+    for (const container of [candidates, missing, bases, preserved]) container.replaceChildren();
+    for (const panel of [missingPanel, basesPanel, preservedPanel]) { panel.hidden = true; panel.open = false; }
+  }
 
   function setBusy(busy) {
     fileInput.disabled = busy;
@@ -50,14 +60,15 @@ export function setupImageImport() {
 
   function showCandidates() {
     const result = extractValues(rawText.value);
-    candidates.replaceChildren();
-    missing.replaceChildren();
+    clearReview();
+    const current = Object.fromEntries(new FormData(targetForm));
     let count = 0;
     for (const field of OCR_FIELDS) {
       const key = field.key === 'name' && targetForm.id === 'start-form' ? 'character' : field.key;
       const control = targetForm.elements.namedItem(key);
       if (!control || control.readOnly) continue;
-      const detected = result.values[field.key] !== undefined;
+      const group = reviewGroup(field.key, result.values, current);
+      const detected = group === 'detected';
       const row = document.createElement('div');
       row.className = 'ocr-candidate';
       const selectionLabel = document.createElement('label');
@@ -79,7 +90,7 @@ export function setupImageImport() {
       input.step = field.type === 'decimal' ? 'any' : '1';
       input.min = control.min || field.min || 0;
       input.max = Number.MAX_SAFE_INTEGER;
-      input.value = result.values[field.key] ?? '';
+      input.value = result.values[field.key] ?? current[key] ?? '';
       input.disabled = !detected;
       input.required = detected && key !== 'specialization';
       checkbox.addEventListener('change', () => {
@@ -97,25 +108,25 @@ export function setupImageImport() {
       if (detected) {
         candidates.append(row);
         count += 1;
-      } else missing.append(row);
+      } else ({ base: bases, preserved, missing })[group].append(row);
     }
     missingPanel.hidden = missing.children.length === 0;
+    basesPanel.hidden = bases.children.length === 0;
+    preservedPanel.hidden = preserved.children.length === 0;
     missingPanel.open = count === 0;
     const description = count
       ? `Se leyeron ${count} campos. Revisa los datos y desmarca los que quieras omitir antes de confirmar.`
       : 'No se detectaron valores para este formulario. Revisa el texto o completa los campos pendientes.';
     const needsMesos = targetForm.elements.namedItem('mesos') && result.values.mesos === undefined;
     status.textContent = [description, ...result.warnings, needsMesos ? 'Mesos pendientes: no se pudo leer el saldo. Puedes cargar una foto más cercana del inventario; los demás campos del personaje se conservan al aplicar.' : ''].join(' ');
-    applyButton.disabled = candidates.children.length + missing.children.length === 0;
+    applyButton.disabled = candidates.children.length + missing.children.length + bases.children.length + preserved.children.length === 0;
   }
 
   document.querySelectorAll('[data-ocr-form]').forEach(button => {
     button.addEventListener('click', () => {
       targetForm = document.getElementById(button.dataset.ocrForm);
       rawText.value = '';
-      candidates.replaceChildren();
-      missing.replaceChildren();
-      missingPanel.hidden = true;
+      clearReview();
       document.getElementById('ocr-purpose').textContent = targetForm.id === 'profile-form'
         ? 'Lee una captura general con CHARACTER STAT, sus detalles e inventario visibles. Se propondrán todos los datos del personaje para revisarlos.'
         : 'Esta lectura rellena los valores de la sesión. Para guardar AP y combate, usa Capturar personaje desde una foto.';
@@ -139,9 +150,7 @@ export function setupImageImport() {
     cameraInput.value = '';
     selectedFile = null;
     rawText.value = '';
-    candidates.replaceChildren();
-    missing.replaceChildren();
-    missingPanel.hidden = true;
+    clearReview();
   });
 
   async function selectImage(event) {
@@ -152,9 +161,7 @@ export function setupImageImport() {
     selectedFile = file;
     const otherInput = input === fileInput ? cameraInput : fileInput;
     otherInput.value = '';
-    candidates.replaceChildren();
-    missing.replaceChildren();
-    missingPanel.hidden = true;
+    clearReview();
     rawText.value = '';
     applyButton.disabled = true;
     if (imageUrl) URL.revokeObjectURL(imageUrl);
@@ -195,7 +202,7 @@ export function setupImageImport() {
     let activeWorker;
     let readingStage = 'imagen';
     setBusy(true);
-    candidates.replaceChildren();
+    clearReview();
     rawText.value = '';
     status.textContent = 'Preparando la lectura. La primera vez puede tardar unos segundos.';
     try {
@@ -243,7 +250,7 @@ export function setupImageImport() {
       status.textContent = 'El formulario cambió mientras leías la imagen. Ciérrala y vuelve a abrirlo.';
       return;
     }
-    const selected = [...candidates.children, ...missing.children].filter(row => row.querySelector('[type="checkbox"]').checked);
+    const selected = [candidates, missing, bases, preserved].flatMap(container => [...container.children]).filter(row => row.querySelector('[type="checkbox"]').checked);
     if (!selected.length) {
       status.textContent = 'Marca al menos un campo para aplicarlo.';
       return;

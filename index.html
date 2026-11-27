@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#10241f">
   <meta name="description" content="Mide la EXP y los mesos por hora de tus sesiones de MapleStory Classic World.">
   <title>MSproject tracker</title>
-  <link rel="stylesheet" href="styles.css?v=0.4.3">
-  <script type="module" src="app.js?v=0.4.3"></script>
+  <link rel="stylesheet" href="styles.css?v=0.4.4">
+  <script type="module" src="app.js?v=0.4.4"></script>
 </head>
 <body>
   <header class="topbar">
@@ -139,8 +139,14 @@
     <button id="ocr-read" class="image-import" type="button">Leer imagen</button>
     <p id="ocr-status" role="status" class="form-hint"></p>
     <details><summary>Revisar el texto leído</summary><label>Texto detectado<textarea id="ocr-text" rows="6" spellcheck="false"></textarea></label><button id="ocr-extract" class="secondary image-import" type="button">Extraer valores del texto</button></details>
-    <form id="ocr-review"><div id="ocr-candidates"></div><details id="ocr-missing" hidden><summary>Campos pendientes de lectura</summary><div id="ocr-missing-fields"></div></details><button id="ocr-apply" type="submit" disabled>Aplicar datos revisados</button></form>
+    <form id="ocr-review">
+      <div id="ocr-candidates"></div>
+      <details id="ocr-preserved" hidden><summary>Datos conservados del formulario</summary><p class="form-hint">Ya están rellenados y se conservarán. Márcalos solo si quieres corregirlos.</p><div id="ocr-preserved-fields"></div></details>
+      <details id="ocr-bases" hidden><summary>Bases de AP sin desglose (opcional)</summary><p class="form-hint">El valor mostrado de estos atributos ya está leído. La foto no permite separar base y bonus; puedes completar la base si la conoces.</p><div id="ocr-base-fields"></div></details>
+      <details id="ocr-missing" hidden><summary>Campos pendientes de lectura</summary><div id="ocr-missing-fields"></div></details>
+      <button id="ocr-apply" type="submit" disabled>Aplicar datos revisados</button>
+    </form>
   </dialog>
-  <footer>MSproject tracker <span>v0.4.3 · Proyecto de fans independiente</span></footer>
+  <footer>MSproject tracker <span>v0.4.4 · Proyecto de fans independiente</span></footer>
 </body>
 </html>

@@ -458,7 +458,7 @@ footer {
   margin-bottom: 1rem;
 }
 
-#ocr-missing {
+#ocr-missing, #ocr-bases, #ocr-preserved {
   margin: 1rem 0;
 }
 
