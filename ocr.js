@@ -259,7 +259,10 @@ export function setupImageImport() {
     if (targetForm.id === 'profile-form') {
       const classValue = key => {
         const row = selected.find(item => item.querySelector('[type="checkbox"]').name === key);
-        return row ? row.querySelector('select').value : targetForm.elements.namedItem(key).value;
+        if (row) return row.querySelector('select').value;
+        const current = targetForm.elements.namedItem(key).value;
+        if (key === 'specialization' && classValue('job') !== targetForm.elements.job.value) return '';
+        return current;
       };
       const job = classValue('job');
       const specialization = classValue('specialization');

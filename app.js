@@ -443,6 +443,6 @@ appendNumericFields([...PROGRESS_FIELDS, ...CHARACTER_FIELDS.filter(field => ['f
 appendNumericFields(CHARACTER_FIELDS.filter(field => ATTRIBUTES.some(key => field.key === key || field.key === `${key}Total`)), 'profile-attribute-fields');
 appendNumericFields(COMBAT_FIELDS.filter(field => field.key !== 'weaponAttack'), 'profile-combat-fields');
 setupImageImport();
-$('profile-form').elements.job.addEventListener('input', () => updateSpecializations());
+$('profile-form').elements.job.addEventListener('input', () => updateSpecializations($('profile-form').elements.specialization.value));
 render();
 setInterval(updateClock, 250);
