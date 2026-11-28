@@ -1,8 +1,8 @@
-import { detectPanelRegions, resourceParts, mesosLabelRegions, inventoryLabelRegions, inventoryFooterRegions } from './ocr-panels.js?v=0.7.1';
-import { extractValues, layoutText, OCR_FIELDS } from './ocr-parser.js?v=0.7.1';
-import { extractHudClass, rightAlignedBalance, confirmedBalance, mergeReadings } from './ocr-evidence.js?v=0.7.1';
-import { balanceDigits, resizePixels, panelPixels, trimBalanceBorders } from './ocr-pixels.js?v=0.7.1';
-import { parseOcrClass } from './jobs.js?v=0.7.1';
+import { detectPanelRegions, resourceParts, mesosLabelRegions, inventoryLabelRegions, inventoryFooterRegions, hudGaugeRegions } from './ocr-panels.js?v=0.7.2';
+import { extractValues, layoutText, OCR_FIELDS } from './ocr-parser.js?v=0.7.2';
+import { extractHudClass, rightAlignedBalance, confirmedBalance, mergeReadings } from './ocr-evidence.js?v=0.7.2';
+import { balanceDigits, resizePixels, panelPixels, trimBalanceBorders } from './ocr-pixels.js?v=0.7.2';
+import { parseOcrClass } from './jobs.js?v=0.7.2';
 
 function imagePixels(image) {
   const canvas = document.createElement('canvas');
@@ -146,12 +146,15 @@ function wordsOf(blocks = []) {
     (paragraph.lines || []).flatMap(line => line.words || [])));
 }
 
-function levelBadges(hud, expBox) {
+function levelBadges(hud, expBox, search) {
   const h = expBox.y1 - expBox.y0;
-  const from = Math.max(0, Math.floor(expBox.y0 - h * .65));
-  const to = Math.min(hud.height, Math.ceil(expBox.y1 + h * 1.4));
+  const from = Math.max(0, Math.floor(search?.y0 ?? expBox.y0 - h * .65));
+  const to = Math.min(hud.height, Math.ceil(search?.y1 ?? expBox.y1 + h * 1.4));
   const badges = [];
-  for (let x = Math.floor(hud.width * .02); x < hud.width * .22; x += 1) {
+  // Offset the search by the location of EXP instead of the screen origin.
+  const left = Math.max(0, Math.floor(search?.x0 ?? expBox.x0 - hud.width * .57));
+  const right = Math.max(left, Math.min(hud.width, Math.ceil(search?.x1 ?? expBox.x0 - hud.width * .23)));
+  for (let x = left; x < right; x += 1) {
     let count = 0, top = to, bottom = from;
     for (let y = from; y < to; y += 1) {
       const offset = (y * hud.width + x) * 4;
@@ -177,6 +180,42 @@ function levelBadges(hud, expBox) {
   });
   if (digits.length > 3 || digits.some((box, i) => i && box.x0 - digits[i - 1].x1 > h * .4)) return [];
   return digits;
+}
+
+async function readBadgeLevel(worker, source, expBox, cancelled, search) {
+  const badges = levelBadges(source, expBox, search);
+  if (!badges.length) return undefined;
+  const height = expBox.y1 - expBox.y0;
+  const bounds = {
+    x0: Math.max(0, badges[0].x0 - height * .08),
+    x1: Math.min(source.width, badges.at(-1).x1 + height * .08),
+    y0: Math.max(0, Math.min(...badges.map(badge => badge.y0)) - height * .025),
+    y1: Math.min(source.height, Math.max(...badges.map(badge => badge.y1)) + height * .04)
+  };
+  for (const [mode, binary] of [['7', false], ['13', true]]) {
+    if (cancelled()) return undefined;
+    await worker.setParameters({ tessedit_pageseg_mode: mode, tessedit_char_whitelist: '0123456789' });
+    const { data } = await worker.recognize(panelImage(source, bounds, { invert: true, whiteText: true, binary, threshold: 132 }));
+    const raw = data.text.replace(/\s+/g, '');
+    if (/^[1-9]\d{0,2}$/.test(raw) && raw.length === badges.length && data.confidence >= 40) return Number(raw);
+  }
+  return undefined;
+}
+
+async function readCenteredHud(worker, source, cancelled) {
+  const regions = hudGaugeRegions(source);
+  if (!regions) return {};
+  for (const [mode, binary] of [['7', false], ['13', true]]) {
+    if (cancelled()) return {};
+    await worker.setParameters({ tessedit_pageseg_mode: mode, tessedit_char_whitelist: 'EXP0123456789.,()%[] ' });
+    const { data } = await worker.recognize(panelImage(source, regions.exp, { invert: true, whiteText: true, binary }));
+    const text = data.text.trim().replace(/\[/g, '(');
+    if (!/^EXP(?:[. :]|\d)/i.test(text)) continue;
+    const { exp, expPercent } = extractValues(text).values;
+    if (exp === undefined || !(expPercent >= 0 && expPercent <= 100)) continue;
+    return { exp, expPercent, level: await readBadgeLevel(worker, source, regions.exp, cancelled, regions.level) };
+  }
+  return {};
 }
 
 async function readHudProgress(worker, source, cancelled, highContrast = false) {
@@ -234,30 +273,18 @@ async function readHudProgress(worker, source, cancelled, highContrast = false) 
   }
   if (values.level !== undefined || cancelled()) return values;
 
-  if (!badges.length) return values;
-  const bounds = {
-    x0: Math.max(0, badges[0].x0 - height * .08),
-    x1: Math.min(hud.width, badges.at(-1).x1 + height * .08),
-    y0: Math.max(0, Math.min(...badges.map(badge => badge.y0)) - height * .025),
-    y1: Math.min(hud.height, Math.max(...badges.map(badge => badge.y1)) + height * .04)
-  };
-  for (const [mode, binary] of [['7', false], ['13', true]]) {
-    if (cancelled()) return values;
-    await worker.setParameters({ tessedit_pageseg_mode: mode, tessedit_char_whitelist: '0123456789' });
-    const { data: reading } = await worker.recognize(panelImage(hud, bounds, { invert: true, whiteText: true, binary, threshold: 132 }));
-    const raw = reading.text.replace(/\s+/g, '');
-    if (/^[1-9]\d{0,2}$/.test(raw) && raw.length === badges.length && reading.confidence >= 40) {
-      values.level = Number(raw);
-      break;
-    }
-  }
+  values.level = await readBadgeLevel(worker, hud, expBox, cancelled);
   return values;
 }
 
 export async function recognizeSessionFrame(worker, source, cancelled, review = false, searchInventory = true) {
   let hud = {};
   try {
-    hud = await readHudProgress(worker, source, cancelled);
+    hud = await readCenteredHud(worker, source, cancelled);
+    if (!cancelled() && (hud.level === undefined || hud.exp === undefined)) {
+      const fallback = await readHudProgress(worker, source, cancelled);
+      hud = hud.exp === undefined ? fallback : { ...hud, level: hud.level ?? fallback.level };
+    }
     if (!cancelled() && hud.exp === undefined && hud.expPercent === undefined) {
       hud = await readHudProgress(worker, source, cancelled, true);
     }
@@ -266,9 +293,9 @@ export async function recognizeSessionFrame(worker, source, cancelled, review = 
   }
   if (cancelled()) return null;
   const needStats = review || hud.level === undefined || (hud.exp === undefined && hud.expPercent === undefined);
-  const scale = Math.min(2, 1440 / source.width, 1920 / source.height);
+  const scale = Math.min(2, 1920 / source.width, 1920 / source.height);
   const analysis = resizePixels(source, { x0: 0, y0: 0, x1: source.width, y1: source.height }, Math.round(source.width * scale), Math.round(source.height * scale));
-  const regions = detectPanelRegions(analysis, !needStats);
+  const regions = detectPanelRegions(analysis, !needStats, { smallCoins: true });
   const lines = [];
   let inventory = 'missing';
   for (const region of regions) {

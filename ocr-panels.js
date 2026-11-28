@@ -16,7 +16,7 @@ function colorMask({ data, width, height }) {
   return mask;
 }
 
-function components(mask, bit, width, height, visited, queue) {
+function components(mask, bit, width, height, visited, queue, minimumWidth = width * .008) {
   visited.fill(0);
   const result = [];
   for (let start = 0; start < mask.length; start += 1) {
@@ -38,7 +38,7 @@ function components(mask, bit, width, height, visited, queue) {
       }
     }
     const w = x1 - x0, h = y1 - y0;
-    if (w >= width * .008 && h >= 5 && w < width * .3 && h < height * .35 && tail / (w * h) > .25) {
+    if (w >= minimumWidth && h >= 5 && w < width * .3 && h < height * .35 && tail / (w * h) > .25) {
       result.push({ x0, x1, y0, y1, width: w, height: h, fill: tail / (w * h) });
     }
   }
@@ -212,12 +212,12 @@ function balanceRegion(image, mask, coins) {
   return best ?? fallback;
 }
 
-export function detectPanelRegions(image, balanceOnly = false) {
+export function detectPanelRegions(image, balanceOnly = false, { smallCoins = false } = {}) {
   const { width, height } = image;
   const mask = colorMask(image);
   const visited = new Uint8Array(mask.length);
   const queue = new Int32Array(mask.length);
-  const coins = components(mask, YELLOW, width, height, visited, queue);
+  const coins = components(mask, YELLOW, width, height, visited, queue, smallCoins ? Math.max(4, width * .004) : undefined);
   const balance = balanceRegion(image, mask, coins);
   if (balanceOnly) return balance ? clipRegions([balance], width, height) : [];
   const greens = components(mask, GREEN, width, height, visited, queue);
@@ -260,6 +260,52 @@ export function detectPanelRegions(image, balanceOnly = false) {
   if (combat) regions.push(...valueRegions(combat.column, combat.rows, ['ATTACK', 'WEAPON DEF', 'MAGIC', 'MAGIC DEF', 'ACCURACY', 'EVASION', 'CRIT RATE', 'CRIT DAMAGE', 'SPEED', 'JUMP'], {}, 1.6));
   if (balance) regions.push(balance);
   return clipRegions(regions, width, height);
+}
+
+// The HUD stays centered on wide windows. Locate the start of the HP and
+// MP fills to infer where the next slot (EXP) and the level badge are.
+export function hudGaugeRegions({ data, width, height }) {
+  const tone = (x, y) => {
+    const offset = (y * width + x) * 4;
+    const r = data[offset], g = data[offset + 1], b = data[offset + 2];
+    if (r > 120 && r > g * 1.65 && r > b * 1.65) return 1;
+    if (b > 115 && b > r * 1.6 && b > g * 1.22) return 2;
+    return 0;
+  };
+  const minRun = Math.max(5, Math.round(width * .003));
+  const start = Math.round(height * .87);
+  for (let y = height - 2; y > start; y -= 2) {
+    const red = [], blue = [];
+    let kind = 0, left = 0;
+    for (let x = 0; x <= width; x += 1) {
+      const next = x === width ? 0 : tone(x, y);
+      if (next === kind) continue;
+      if (kind && x - left >= minRun) (kind === 1 ? red : blue).push({ x: left, width: x - left });
+      kind = next;
+      left = x;
+    }
+    for (const hp of red) for (const mp of blue) {
+      const gap = mp.x - hp.x;
+      if (gap < width * .032 || gap > width * .19 || hp.width > gap * 1.06 || mp.width > gap * 1.16 ||
+          mp.x + gap * 1.7 > width) continue;
+      const firstRow = (run, color) => {
+        const x = run.x + Math.min(4, Math.floor(run.width / 2));
+        let top = y;
+        while (top > start && tone(x, top - 1) === color) top -= 1;
+        return top;
+      };
+      const hpTop = firstRow(hp, 1), mpTop = firstRow(mp, 2);
+      if (Math.abs(hpTop - mpTop) > gap * .033 || y - Math.max(hpTop, mpTop) < gap * .035) continue;
+      const top = Math.min(hpTop, mpTop);
+      return {
+        exp: { x0: Math.max(0, mp.x + gap * .94), x1: Math.min(width, mp.x + gap * 2.08),
+          y0: Math.max(0, top - gap * .145), y1: top - gap * .025 },
+        level: { x0: Math.max(0, hp.x - gap * 2.12), x1: Math.max(0, hp.x - gap * .72),
+          y0: Math.max(0, top - gap * .10), y1: Math.min(height, top + gap * .11) }
+      };
+    }
+  }
+  return null;
 }
 
 function clipRegions(regions, width, height) {
