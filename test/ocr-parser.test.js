@@ -6,6 +6,7 @@ test('interpreta la línea de EXP de la barra con y sin etiqueta o porcentaje', 
   assert.deepEqual(parseHudExp('EXP. 82,689 [16.20%]'), { labeled: true, exp: 82689, expPercent: 16.2 });
   assert.deepEqual(parseHudExp('82.689 16,20%'), { labeled: false, exp: 82689, expPercent: 16.2 });
   assert.deepEqual(parseHudExp('EXP 82,689'), { labeled: true, exp: 82689, expPercent: undefined });
+  assert.deepEqual(parseHudExp('EXP. 85.921 [16.8'), { labeled: true, exp: 85921, expPercent: undefined });
   assert.deepEqual(parseHudExp('EXP [0.04%]'), { labeled: true, exp: undefined, expPercent: .04 });
   assert.deepEqual(parseHudExp('HP 4/5'), { labeled: false, exp: undefined, expPercent: undefined });
 });

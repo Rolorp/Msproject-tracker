@@ -51,10 +51,14 @@ test('confirma un nivel nuevo antes de usarlo y deja la tasa pendiente al cruzar
   assert.equal(accepted.exp.rate, null);
   const staleLevel = recordLiveProgress(accepted, { level: 30, exp: 400 }, session, 85_000);
   assert.equal(staleLevel.exp, accepted.exp);
-  const percentOnly = recordLiveProgress(accepted, { level: 31, expPercent: 44.16 }, session, 91_000);
-  assert.equal(percentOnly.exp.value, null);
-  assert.equal(percentOnly.exp.percent, 44.16);
-  assert.equal(percentOnly.exp.rate, null);
+});
+
+test('una lectura de solo porcentaje conserva la EXP absoluta, su hora y su tasa', () => {
+  const session = start();
+  const first = recordLiveProgress({}, { level: 30, exp: 400 }, session, 61_000);
+  const percentOnly = recordLiveProgress(first, { level: 30, expPercent: 35.92, mesos: 12 }, session, 71_000);
+  assert.equal(percentOnly.exp, first.exp);
+  assert.equal(percentOnly.mesos.value, 12);
 });
 
 test('usa todos los requisitos manuales cuando se superan varios niveles', () => {

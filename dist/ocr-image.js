@@ -1,8 +1,8 @@
-import { detectPanelRegions, resourceParts, mesosLabelRegions, inventoryLabelRegions, inventoryFooterRegions, hudGaugeRegions } from './ocr-panels.js?v=0.7.3';
-import { extractValues, layoutText, OCR_FIELDS, parseHudExp } from './ocr-parser.js?v=0.7.3';
-import { extractHudClass, rightAlignedBalance, confirmedBalance, mergeReadings } from './ocr-evidence.js?v=0.7.3';
-import { balanceDigits, resizePixels, panelPixels, trimBalanceBorders } from './ocr-pixels.js?v=0.7.3';
-import { parseOcrClass } from './jobs.js?v=0.7.3';
+import { detectPanelRegions, resourceParts, mesosLabelRegions, inventoryLabelRegions, inventoryFooterRegions, hudGaugeRegions } from './ocr-panels.js?v=0.7.4';
+import { extractValues, layoutText, OCR_FIELDS, parseHudExp } from './ocr-parser.js?v=0.7.4';
+import { extractHudClass, rightAlignedBalance, confirmedBalance, mergeReadings } from './ocr-evidence.js?v=0.7.4';
+import { balanceDigits, resizePixels, panelPixels, trimBalanceBorders } from './ocr-pixels.js?v=0.7.4';
+import { parseOcrClass } from './jobs.js?v=0.7.4';
 
 function imagePixels(image) {
   const canvas = document.createElement('canvas');
@@ -203,7 +203,7 @@ async function readBadgeLevel(worker, source, expBox, cancelled, search) {
 }
 
 async function readHudCrop(worker, source, box, cancelled, { marked = false, requireLabel = false } = {}) {
-  const readings = [];
+  const readings = new Set();
   for (const [mode, options] of [
     ['7', { invert: true }],
     ['13', { invert: true, whiteText: true, binary: true, threshold: 170 }],
@@ -213,24 +213,56 @@ async function readHudCrop(worker, source, box, cancelled, { marked = false, req
     await worker.setParameters({ tessedit_pageseg_mode: mode, tessedit_char_whitelist: 'EXP0123456789.,()%[] ' });
     const { data } = await worker.recognize(panelImage(source, box, options));
     const { labeled, exp, expPercent } = parseHudExp(data.text);
-    if (exp === undefined && expPercent === undefined || requireLabel && !labeled) continue;
-    if (labeled && exp !== undefined && expPercent !== undefined) return { exp, expPercent };
-    if ((labeled || marked || expPercent !== undefined) &&
-        readings.some(previous => previous.exp === exp && previous.expPercent === expPercent)) return { exp, expPercent };
-    readings.push({ exp, expPercent });
+    if (exp === undefined || requireLabel && !labeled) continue;
+    if (labeled && expPercent !== undefined) return { exp };
+    if ((labeled || marked || expPercent !== undefined) && readings.has(exp)) return { exp };
+    readings.add(exp);
   }
   return {};
 }
 
+function hudAmountBox(source, box) {
+  // The HUD draws the brackets around the percentage in green. Their position
+  // moves with the length of the EXP amount, so use both to locate the split.
+  const { data, width } = source;
+  const span = box.x1 - box.x0;
+  const height = box.y1 - box.y0;
+  const brackets = [];
+  for (let x = Math.ceil(box.x0 + span * .23); x < box.x1; x += 1) {
+    let green = 0;
+    for (let y = Math.ceil(box.y0); y < box.y1; y += 1) {
+      const i = (y * width + x) * 4;
+      if (data[i + 1] > 108 && data[i + 1] > data[i] * 1.16 && data[i + 1] > data[i + 2] * 1.28) green += 1;
+    }
+    if (green < height * .36) continue;
+    const previous = brackets.at(-1);
+    if (previous && x - previous.right <= Math.max(1, height * .16)) previous.right = x;
+    else brackets.push({ left: x, right: x });
+  }
+  if (brackets.length !== 2) return null;
+  const [opening, closing] = brackets;
+  const distance = closing.left - opening.right;
+  if (distance < height * 1.3 || distance > height * 4.5) return null;
+  return { ...box, x1: opening.left };
+}
+
 async function readCenteredHud(worker, source, cancelled, markedBox) {
   const regions = hudGaugeRegions(source);
-  const box = markedBox ?? regions?.exp;
-  if (!box) return {};
-  const progress = await readHudCrop(worker, source, box, cancelled, { marked: !!markedBox });
-  if (progress.exp === undefined && progress.expPercent === undefined) return {};
-  const level = regions ? await readBadgeLevel(worker, source, regions.exp, cancelled, regions.level)
-    : await readBottomLevel(worker, source, box, cancelled);
-  return { ...progress, level };
+  if (markedBox) {
+    const marked = await readHudCrop(worker, source, markedBox, cancelled, { marked: true });
+    if (marked.exp !== undefined) {
+      const level = regions ? await readBadgeLevel(worker, source, regions.exp, cancelled, regions.level)
+        : await readBottomLevel(worker, source, markedBox, cancelled);
+      return { ...marked, level, marked: true };
+    }
+  }
+  if (!regions || cancelled()) return {};
+  const box = regions.exp;
+  const amountBox = hudAmountBox(source, box);
+  const progress = await readHudCrop(worker, source, amountBox ?? box, cancelled,
+    { requireLabel: !!amountBox });
+  const level = await readBadgeLevel(worker, source, box, cancelled, regions.level);
+  return { ...progress, level, amountLocated: !!amountBox };
 }
 
 function readBottomLevel(worker, source, expBox, cancelled) {
@@ -248,7 +280,7 @@ async function readBottomExp(worker, source, cancelled) {
     { x0: source.width * .505, x1: source.width * .61, y0: source.height * .963, y1: source.height * .992 }
   ]) {
     const progress = await readHudCrop(worker, source, box, cancelled, { requireLabel: true });
-    if (progress.exp !== undefined || progress.expPercent !== undefined) {
+    if (progress.exp !== undefined) {
       return { ...progress, level: await readBottomLevel(worker, source, box, cancelled) };
     }
   }
@@ -284,11 +316,9 @@ async function readHudProgress(worker, source, cancelled, highContrast = false) 
   const withResource = words.some(word => /^[HM]P(?:\W|\d|$)/i.test(word.text) && word.bbox.x1 < expBox.x0 &&
     Math.abs(word.bbox.y0 - expBox.y0) < height * 1.05);
   const anchorText = [expWord.text, ...amounts.map(word => word.text)].join(' ').replace(/\[/g, '(');
-  const matchingRow = amounts.length && rows.find(text => text.replace(/\[/g, '(').includes(anchorText));
-  const values = extractValues(matchingRow || anchorText).values;
-  const percentFound = values.expPercent >= 0 && values.expPercent <= 100;
-  if (!withResource && !badges.length && !percentFound) return {};
-  if (!percentFound) delete values.expPercent;
+  const initial = parseHudExp(anchorText);
+  if (!withResource && !badges.length && initial.expPercent === undefined) return {};
+  const values = { exp: initial.exp };
   const hudLevel = rows.find(text => /^\s*LV[.:]?\s*\d/i.test(text) && /\bEXP\b/i.test(text));
   if (hudLevel) values.level = extractValues(hudLevel).values.level;
 
@@ -304,9 +334,10 @@ async function readHudProgress(worker, source, cancelled, highContrast = false) 
     };
     await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: 'EXP0123456789.,()%[] ' });
     const { data: exact } = await worker.recognize(panelImage(hud, bounds, { invert: true }));
-    const reading = extractValues(exact.text.replace(/\[/g, '(')).values;
-    if (reading.exp !== undefined && (reading.expPercent !== undefined || values.exp === undefined)) values.exp = reading.exp;
-    if (reading.expPercent >= 0 && reading.expPercent <= 100) values.expPercent = reading.expPercent;
+    const reading = parseHudExp(exact.text);
+    // The wider OCR view can mistake a bracket and a percentage for digits.
+    // Only replace it when the tighter view sees both distinct values.
+    if (reading.labeled && reading.exp !== undefined && reading.expPercent !== undefined) values.exp = reading.exp;
   }
   if (values.level !== undefined || cancelled()) return values;
 
@@ -333,17 +364,18 @@ export async function recognizeSessionFrame(worker, source, cancelled, review = 
   let hud = {};
   try {
     hud = await readCenteredHud(worker, source, cancelled, zones.exp);
-    const hasProgress = () => hud.exp !== undefined || hud.expPercent !== undefined;
-    const fromMarkedRegion = !!zones.exp && hasProgress();
-    if (!cancelled() && !hasProgress()) hud = await readBottomExp(worker, source, cancelled);
-    if (!cancelled() && (hud.level === undefined || !hasProgress())) {
+    if (!cancelled() && hud.exp === undefined && !hud.amountLocated) {
+      const fallback = await readBottomExp(worker, source, cancelled);
+      hud = { ...fallback, level: hud.level ?? fallback.level };
+    }
+    if (!cancelled() && (hud.level === undefined || hud.exp === undefined && !hud.amountLocated)) {
       const fallback = await readHudProgress(worker, source, cancelled);
-      hud = hasProgress() ? { ...hud, level: hud.level ?? fallback.level } : fallback;
+      hud = { ...hud, exp: hud.exp ?? (hud.amountLocated ? undefined : fallback.exp), level: hud.level ?? fallback.level };
     }
-    if (!cancelled() && !hasProgress()) {
-      hud = await readHudProgress(worker, source, cancelled, true);
+    if (!cancelled() && hud.exp === undefined && !hud.amountLocated) {
+      const fallback = await readHudProgress(worker, source, cancelled, true);
+      hud = { ...fallback, level: hud.level ?? fallback.level };
     }
-    if (fromMarkedRegion) hud.marked = true;
   } catch {
     // A failed HUD crop should not discard a readable inventory.
   }
@@ -446,8 +478,8 @@ export async function recognizeSessionFrame(worker, source, cancelled, review = 
   }
   if (cancelled()) return null;
   const stats = extractValues(lines.join('\n')).values;
-  const expSource = hud.exp !== undefined || hud.expPercent !== undefined ? 'hud' : null;
-  return { name: stats.name, level: hud.level ?? stats.level, exp: hud.exp, expPercent: hud.expPercent, mesos: stats.mesos, expSource, expMarked: hud.marked, inventory };
+  const expSource = hud.exp !== undefined ? 'hud' : null;
+  return { name: stats.name, level: hud.level ?? stats.level, exp: hud.exp, mesos: stats.mesos, expSource, expMarked: hud.marked, inventory };
 }
 
 export async function recognizeCharacterImage(worker, image, progress, cancelled) {

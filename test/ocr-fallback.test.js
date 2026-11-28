@@ -72,6 +72,75 @@ test('la lectura de ventana mantiene la EXP pendiente cuando solo se ve la ficha
   }
 });
 
+test('continúa buscando la cifra de EXP cuando la zona marcada solo devuelve un porcentaje', async () => {
+  const width = 1280, height = 720;
+  const source = { width, height, data: new Uint8ClampedArray(width * height * 4).fill(255) };
+  const previous = globalThis.document;
+  globalThis.document = { createElement: () => new PixelCanvas() };
+  const worker = {
+    setParameters: async () => {},
+    recognize: async canvas => ({ data: {
+      text: canvas.height !== 112 ? '' : canvas.width < 300 ? 'EXP [35.92%]' : 'EXP. 85.921 [16.83%]',
+      blocks: []
+    } })
+  };
+  try {
+    const zones = { exp: { x0: 746, x1: 778, y0: 700, y1: 714 } };
+    const result = await recognizeSessionFrame(worker, source, () => false, false, false, zones);
+    assert.equal(result.exp, 85921);
+    assert.equal(result.expPercent, undefined);
+    assert.equal(result.expMarked, undefined);
+    let mode, scanned = false;
+    worker.setParameters = async parameters => { mode = parameters.tessedit_pageseg_mode; };
+    worker.recognize = async () => {
+      if (mode !== '11') return { data: { text: scanned ? 'EXP. 13592' : 'EXP [35.92%]', blocks: [] } };
+      scanned = true;
+      const words = [
+        { text: 'HP', bbox: { x0: 990, x1: 1030, y0: 175, y1: 199 } },
+        { text: 'EXP.', bbox: { x0: 1320, x1: 1370, y0: 175, y1: 199 } },
+        { text: '(35.92', bbox: { x0: 1377, x1: 1470, y0: 175, y1: 199 } }
+      ];
+      return { data: { blocks: [{ paragraphs: [{ lines: [{ words }] }] }] } };
+    };
+    const pending = await recognizeSessionFrame(worker, source, () => false, false, false, zones);
+    assert.equal(pending.exp, undefined);
+    assert.equal(pending.expSource, null);
+  } finally {
+    if (previous === undefined) delete globalThis.document;
+    else globalThis.document = previous;
+  }
+});
+
+test('usa los corchetes verdes del HUD para leer el importe aunque falle la línea completa', async () => {
+  const width = 1280, height = 720;
+  const source = { width, height, data: new Uint8ClampedArray(width * height * 4).fill(255) };
+  const paint = (x0, x1, y0, y1, color) => {
+    for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) {
+      source.data.set(color, (y * width + x) * 4);
+    }
+  };
+  paint(465, 568, 706, 717, [210, 10, 10, 255]);
+  paint(575, 678, 706, 717, [10, 84, 210, 255]);
+  for (const x of [746, 790]) paint(x, x + 1, 694, 702, [130, 190, 85, 255]);
+  const previous = globalThis.document;
+  globalThis.document = { createElement: () => new PixelCanvas() };
+  const worker = {
+    setParameters: async () => {},
+    recognize: async canvas => ({ data: {
+      text: canvas.height !== 112 ? '' : canvas.width < 650 ? 'EXP. 85.921' : 'EXP [35.92%]',
+      blocks: []
+    } })
+  };
+  try {
+    const result = await recognizeSessionFrame(worker, source, () => false, false, false);
+    assert.equal(result.exp, 85921);
+    assert.equal(result.expSource, 'hud');
+  } finally {
+    if (previous === undefined) delete globalThis.document;
+    else globalThis.document = previous;
+  }
+});
+
 test('recupera todos los campos generales aunque haya ventanas detectadas y fallen los recortes', async () => {
   const image = panelImage();
   image.naturalWidth = image.width;
