@@ -43,8 +43,8 @@ export function trimBalanceBorders(source, box) {
   return { ...box, y0: light[0].y, y1: light.at(-1).y + 1 };
 }
 
-export function panelPixels(source, box, { invert = false, binary = false, redText = false, whiteText = false, threshold = 150 } = {}) {
-  const height = 96, margin = 8;
+export function panelPixels(source, box, { invert = false, binary = false, redText = false, whiteText = false, threshold = 150, height = 96 } = {}) {
+  const margin = 8;
   const innerWidth = Math.max(1, Math.round((box.x1 - box.x0) * height / (box.y1 - box.y0)));
   const inner = resizePixels(source, box, innerWidth, height);
   const width = innerWidth + margin * 2, outputHeight = height + margin * 2;

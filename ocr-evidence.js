@@ -1,4 +1,30 @@
-import { parseOcrClass, validClass } from './jobs.js?v=0.7.5';
+import { parseOcrClass, validClass } from './jobs.js?v=0.7.6';
+
+// Classic World EXP to the next level. Only the documented range is used.
+// https://mapleclassic.wiki/wiki/Module:ExperienceCurve
+const EXP_TO_NEXT = [
+  0,
+  15, 34, 57, 92, 135, 372, 560, 840, 1242, 1716,
+  2360, 3216, 4200, 5460, 7050, 8840, 11040, 13716, 16680, 20216,
+  24402, 28980, 34320, 40512, 47216, 54900, 63666, 73080, 83720, 95700,
+  108480, 122760, 138666, 155540, 174216, 194832, 216600, 240500, 266682, 294216,
+  324240, 356916, 391160, 428280, 468450, 510420, 555680, 604416, 655200
+];
+
+export function hasHudExperienceReference(level) {
+  return Boolean(EXP_TO_NEXT[level]);
+}
+
+export function hudExperienceFits(level, exp, percent, fillPercent) {
+  const required = EXP_TO_NEXT[level];
+  if (!required) return true;
+  const computed = exp * 100 / required;
+  if (exp > required || fillPercent !== undefined && Math.abs(computed - fillPercent) > 8) return false;
+  if (percent === undefined) return true;
+  // OCR may lose the decimal places of the HUD's percentage.
+  const tolerance = Number.isInteger(percent) ? 1 : .06;
+  return Math.abs(computed - percent) <= tolerance;
+}
 
 export function mergeReadings(primary, fallback) {
   const values = { ...fallback.values, ...primary.values };
