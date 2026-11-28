@@ -1,6 +1,6 @@
-import { recognizeSessionFrame } from './ocr-image.js?v=0.7.1';
-import { createOcrWorker } from './ocr-worker.js?v=0.7.1';
-import { recordLiveProgress } from './session.js?v=0.7.1';
+import { recognizeSessionFrame } from './ocr-image.js?v=0.7.2';
+import { createOcrWorker } from './ocr-worker.js?v=0.7.2';
+import { recordLiveProgress } from './session.js?v=0.7.2';
 
 const INTERVAL = 3500;
 const STALE_AFTER = 15000;
@@ -16,6 +16,7 @@ export function setupScreenCapture(getSession, applyValues) {
   const share = $('screen-share');
   const stop = $('screen-stop');
   const read = $('screen-read');
+  const saveFrame = $('screen-save-frame');
   const apply = $('screen-apply');
   const status = $('screen-status');
   let connection = null;
@@ -71,6 +72,7 @@ export function setupScreenCapture(getSession, applyValues) {
     read.hidden = !readable || session?.status === 'paused';
     read.disabled = !!connection?.reading;
     read.textContent = tracking ? 'Leer ahora' : 'Leer valores';
+    saveFrame.hidden = !connection?.frame;
     apply.hidden = tracking || !review || !['level', 'exp', 'mesos', 'name'].some(key => review?.values[key] !== undefined);
     $('screen-review').hidden = tracking || !review;
     $('screen-live').hidden = !tracking || (!connection && !live.exp && !live.mesos);
@@ -122,6 +124,7 @@ export function setupScreenCapture(getSession, applyValues) {
       clearTimeout(current.timer);
       current.stream.getTracks().forEach(track => track.stop());
       current.video.srcObject = null;
+      if (current.frame) current.frame.width = current.frame.height = 1;
       current.worker?.terminate();
     }
     notice = text;
@@ -169,7 +172,8 @@ export function setupScreenCapture(getSession, applyValues) {
       const context = canvas.getContext('2d', { willReadFrequently: true });
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
       const frame = context.getImageData(0, 0, canvas.width, canvas.height);
-      canvas.width = canvas.height = 1;
+      if (current.frame) current.frame.width = current.frame.height = 1;
+      current.frame = canvas;
       let light = false;
       for (let y = 0; y < frame.height && !light; y += 8) {
         for (let x = 0; x < frame.width && !light; x += 8) {
@@ -281,6 +285,17 @@ export function setupScreenCapture(getSession, applyValues) {
     }
   });
   stop.addEventListener('click', () => disconnect());
+  saveFrame.addEventListener('click', () => {
+    connection?.frame?.toBlob(blob => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'msproject-fotograma.png';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+  });
   read.addEventListener('click', () => takeReading(connection, getSession()?.status !== 'running', true));
   apply.addEventListener('click', () => {
     if (review) notice = applyValues(review.values);

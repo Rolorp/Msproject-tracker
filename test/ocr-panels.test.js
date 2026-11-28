@@ -1,8 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detectPanelRegions, resourceParts, mesosLabelRegions } from '../dist/ocr-panels.js';
+import { detectPanelRegions, resourceParts, mesosLabelRegions, hudGaugeRegions } from '../dist/ocr-panels.js';
 
 import { panelImage } from './helpers/panel-image.js';
+
+test('localiza la EXP y el nivel con la barra inferior centrada en una ventana ancha', () => {
+  const width = 2560, height = 1440;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const paint = (x0, x1, rgb) => {
+    for (let y = 1410; y < 1431; y += 1) for (let x = x0; x < x1; x += 1) {
+      data.set([...rgb, 255], (y * width + x) * 4);
+    }
+  };
+  paint(955, 1036, [190, 40, 40]);
+  paint(1160, 1299, [30, 95, 205]);
+  const regions = hudGaugeRegions({ data, width, height });
+  assert.ok(regions.exp.x0 <= 1370 && regions.exp.x1 > 1545 && regions.exp.y0 <= 1385);
+  assert.ok(regions.level.x0 <= 624 && regions.level.x1 > 667 && regions.level.y1 >= 1419);
+});
 
 test('identifica filas por estructura de paneles y la casilla de mesos', () => {
   const regions = detectPanelRegions(panelImage());

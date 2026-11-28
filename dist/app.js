@@ -1,10 +1,10 @@
-import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSession, finishSession } from './session.js?v=0.7.1';
-import { saveProfile } from './profile.js?v=0.7.1';
-import { emptyState, restoreState } from './state.js?v=0.7.1';
-import { setupImageImport } from './ocr.js?v=0.7.1';
-import { setupScreenCapture } from './screen-capture.js?v=0.7.1';
-import { ATTRIBUTES, CHARACTER_FIELDS, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js?v=0.7.1';
-import { JOBS, profileClass, classLabel } from './jobs.js?v=0.7.1';
+import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSession, finishSession } from './session.js?v=0.7.2';
+import { saveProfile } from './profile.js?v=0.7.2';
+import { emptyState, restoreState } from './state.js?v=0.7.2';
+import { setupImageImport } from './ocr.js?v=0.7.2';
+import { setupScreenCapture } from './screen-capture.js?v=0.7.2';
+import { ATTRIBUTES, CHARACTER_FIELDS, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js?v=0.7.2';
+import { JOBS, profileClass, classLabel } from './jobs.js?v=0.7.2';
 
 const STORAGE_KEY = 'msproject-tracker.v1';
 const $ = id => document.getElementById(id);
