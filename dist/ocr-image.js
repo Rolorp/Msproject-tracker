@@ -1,8 +1,8 @@
-import { detectPanelRegions, resourceParts, mesosLabelRegions, inventoryLabelRegions, inventoryFooterRegions, hudGaugeRegions } from './ocr-panels.js?v=0.7.2';
-import { extractValues, layoutText, OCR_FIELDS } from './ocr-parser.js?v=0.7.2';
-import { extractHudClass, rightAlignedBalance, confirmedBalance, mergeReadings } from './ocr-evidence.js?v=0.7.2';
-import { balanceDigits, resizePixels, panelPixels, trimBalanceBorders } from './ocr-pixels.js?v=0.7.2';
-import { parseOcrClass } from './jobs.js?v=0.7.2';
+import { detectPanelRegions, resourceParts, mesosLabelRegions, inventoryLabelRegions, inventoryFooterRegions, hudGaugeRegions } from './ocr-panels.js?v=0.7.3';
+import { extractValues, layoutText, OCR_FIELDS, parseHudExp } from './ocr-parser.js?v=0.7.3';
+import { extractHudClass, rightAlignedBalance, confirmedBalance, mergeReadings } from './ocr-evidence.js?v=0.7.3';
+import { balanceDigits, resizePixels, panelPixels, trimBalanceBorders } from './ocr-pixels.js?v=0.7.3';
+import { parseOcrClass } from './jobs.js?v=0.7.3';
 
 function imagePixels(image) {
   const canvas = document.createElement('canvas');
@@ -202,18 +202,55 @@ async function readBadgeLevel(worker, source, expBox, cancelled, search) {
   return undefined;
 }
 
-async function readCenteredHud(worker, source, cancelled) {
-  const regions = hudGaugeRegions(source);
-  if (!regions) return {};
-  for (const [mode, binary] of [['7', false], ['13', true]]) {
+async function readHudCrop(worker, source, box, cancelled, { marked = false, requireLabel = false } = {}) {
+  const readings = [];
+  for (const [mode, options] of [
+    ['7', { invert: true }],
+    ['13', { invert: true, whiteText: true, binary: true, threshold: 170 }],
+    ['7', { invert: true, whiteText: true }]
+  ]) {
     if (cancelled()) return {};
     await worker.setParameters({ tessedit_pageseg_mode: mode, tessedit_char_whitelist: 'EXP0123456789.,()%[] ' });
-    const { data } = await worker.recognize(panelImage(source, regions.exp, { invert: true, whiteText: true, binary }));
-    const text = data.text.trim().replace(/\[/g, '(');
-    if (!/^EXP(?:[. :]|\d)/i.test(text)) continue;
-    const { exp, expPercent } = extractValues(text).values;
-    if (exp === undefined || !(expPercent >= 0 && expPercent <= 100)) continue;
-    return { exp, expPercent, level: await readBadgeLevel(worker, source, regions.exp, cancelled, regions.level) };
+    const { data } = await worker.recognize(panelImage(source, box, options));
+    const { labeled, exp, expPercent } = parseHudExp(data.text);
+    if (exp === undefined && expPercent === undefined || requireLabel && !labeled) continue;
+    if (labeled && exp !== undefined && expPercent !== undefined) return { exp, expPercent };
+    if ((labeled || marked || expPercent !== undefined) &&
+        readings.some(previous => previous.exp === exp && previous.expPercent === expPercent)) return { exp, expPercent };
+    readings.push({ exp, expPercent });
+  }
+  return {};
+}
+
+async function readCenteredHud(worker, source, cancelled, markedBox) {
+  const regions = hudGaugeRegions(source);
+  const box = markedBox ?? regions?.exp;
+  if (!box) return {};
+  const progress = await readHudCrop(worker, source, box, cancelled, { marked: !!markedBox });
+  if (progress.exp === undefined && progress.expPercent === undefined) return {};
+  const level = regions ? await readBadgeLevel(worker, source, regions.exp, cancelled, regions.level)
+    : await readBottomLevel(worker, source, box, cancelled);
+  return { ...progress, level };
+}
+
+function readBottomLevel(worker, source, expBox, cancelled) {
+  return readBadgeLevel(worker, source, expBox, cancelled, {
+    x0: source.width * .015, x1: source.width * .37, y0: source.height * .95, y1: source.height
+  });
+}
+
+async function readBottomExp(worker, source, cancelled) {
+  // A centered widescreen HUD can still be visible when a resource bar
+  // is empty. Require the EXP label when only the standard position is known.
+  if (source.width / source.height < 1.55 || cancelled()) return {};
+  for (const box of [
+    { x0: source.width * .52, x1: source.width * .65, y0: source.height * .948, y1: source.height * .978 },
+    { x0: source.width * .505, x1: source.width * .61, y0: source.height * .963, y1: source.height * .992 }
+  ]) {
+    const progress = await readHudCrop(worker, source, box, cancelled, { requireLabel: true });
+    if (progress.exp !== undefined || progress.expPercent !== undefined) {
+      return { ...progress, level: await readBottomLevel(worker, source, box, cancelled) };
+    }
   }
   return {};
 }
@@ -277,34 +314,66 @@ async function readHudProgress(worker, source, cancelled, highContrast = false) 
   return values;
 }
 
-export async function recognizeSessionFrame(worker, source, cancelled, review = false, searchInventory = true) {
+function isMarkedWalletVisible(source, box) {
+  const width = box.x1 - box.x0, height = box.y1 - box.y0;
+  let pale = 0, blue = 0, sampled = 0;
+  for (let y = box.y0 + Math.floor(height * .2); y < box.y1 - height * .2; y += 2) {
+    for (let step = 1; step <= 4; step += 1) {
+      const inside = (y * source.width + Math.floor(box.x0 + width * step * .1)) * 4;
+      const right = (y * source.width + Math.min(source.width - 1, Math.floor(box.x1 + height * step * .35))) * 4;
+      if (Math.min(source.data[inside], source.data[inside + 1], source.data[inside + 2]) >= 168) pale += 1;
+      if (source.data[right + 2] >= source.data[right] + 14 && source.data[right + 2] >= source.data[right + 1] + 5) blue += 1;
+      sampled += 1;
+    }
+  }
+  return sampled > 0 && pale / sampled >= .65 && blue / sampled >= .25;
+}
+
+export async function recognizeSessionFrame(worker, source, cancelled, review = false, searchInventory = true, zones = {}) {
   let hud = {};
   try {
-    hud = await readCenteredHud(worker, source, cancelled);
-    if (!cancelled() && (hud.level === undefined || hud.exp === undefined)) {
+    hud = await readCenteredHud(worker, source, cancelled, zones.exp);
+    const hasProgress = () => hud.exp !== undefined || hud.expPercent !== undefined;
+    const fromMarkedRegion = !!zones.exp && hasProgress();
+    if (!cancelled() && !hasProgress()) hud = await readBottomExp(worker, source, cancelled);
+    if (!cancelled() && (hud.level === undefined || !hasProgress())) {
       const fallback = await readHudProgress(worker, source, cancelled);
-      hud = hud.exp === undefined ? fallback : { ...hud, level: hud.level ?? fallback.level };
+      hud = hasProgress() ? { ...hud, level: hud.level ?? fallback.level } : fallback;
     }
-    if (!cancelled() && hud.exp === undefined && hud.expPercent === undefined) {
+    if (!cancelled() && !hasProgress()) {
       hud = await readHudProgress(worker, source, cancelled, true);
     }
+    if (fromMarkedRegion) hud.marked = true;
   } catch {
     // A failed HUD crop should not discard a readable inventory.
   }
   if (cancelled()) return null;
-  const needStats = review || hud.level === undefined || (hud.exp === undefined && hud.expPercent === undefined);
+  const needStats = review || hud.level === undefined;
   const scale = Math.min(2, 1920 / source.width, 1920 / source.height);
   const analysis = resizePixels(source, { x0: 0, y0: 0, x1: source.width, y1: source.height }, Math.round(source.width * scale), Math.round(source.height * scale));
   const regions = detectPanelRegions(analysis, !needStats, { smallCoins: true });
   const lines = [];
   let inventory = 'missing';
+  if (zones.mesos && isMarkedWalletVisible(source, zones.mesos) && !cancelled()) {
+    inventory = 'unreadable';
+    try {
+      const value = await readBalance(worker, source, zones.mesos, cancelled);
+      if (value) {
+        inventory = 'read';
+        lines.push(`MESOS ${value}`);
+      }
+    } catch {
+      // Automatic detection can still recover a balance from a moved window.
+    }
+  }
   for (const region of regions) {
     if (cancelled()) return null;
     const label = region.label;
-    if (!['LEVEL', 'EXP', 'MESOS'].includes(label) && !(review && label === 'NAME')) continue;
+    if (!['LEVEL', 'MESOS'].includes(label) && !(review && label === 'NAME')) continue;
     const box = originalBox(source, analysis, region);
     try {
       if (label === 'MESOS') {
+        if (inventory === 'read') continue;
         inventory = 'unreadable';
         const value = await readBalance(worker, source, box, cancelled, true, true);
         if (value) {
@@ -320,15 +389,31 @@ export async function recognizeSessionFrame(worker, source, cancelled, review = 
       // Keep the other recognized fields when a single region fails.
     }
   }
+  if (inventory !== 'read' && searchInventory && source.width > analysis.width * 1.2 && !cancelled()) {
+    try {
+      const [region] = detectPanelRegions(source, true, { smallCoins: true });
+      if (region) {
+        inventory = 'unreadable';
+        const value = await readBalance(worker, source, region, cancelled, true, true);
+        if (value) {
+          inventory = 'read';
+          lines.push(`MESOS ${value}`);
+        }
+      }
+    } catch {
+      // A label or footer search remains available when the icon is unclear.
+    }
+  }
   if (inventory !== 'read' && searchInventory && !cancelled()) {
     try {
-      for (const region of inventoryFooterRegions(analysis)) {
+      const footerImage = source.width >= analysis.width ? source : analysis;
+      for (const region of inventoryFooterRegions(footerImage)) {
         if (cancelled()) return null;
         await worker.setParameters({ tessedit_pageseg_mode: '13', tessedit_char_whitelist: 'MESO05' });
-        const { data } = await worker.recognize(panelImage(source, originalBox(source, analysis, region.labelBox), { invert: true }));
+        const { data } = await worker.recognize(panelImage(source, originalBox(source, footerImage, region.labelBox), { invert: true }));
         if (!/^MES[O0][S5]$/i.test(data.text.trim().replace(/\s/g, ''))) continue;
         inventory = 'unreadable';
-        const value = await readBalance(worker, source, originalBox(source, analysis, region), cancelled, true, true);
+        const value = await readBalance(worker, source, originalBox(source, footerImage, region), cancelled, true, true);
         if (!value) continue;
         inventory = 'read';
         lines.push(`MESOS ${value}`);
@@ -361,11 +446,8 @@ export async function recognizeSessionFrame(worker, source, cancelled, review = 
   }
   if (cancelled()) return null;
   const stats = extractValues(lines.join('\n')).values;
-  const validStats = stats.level !== undefined && (stats.exp !== undefined || stats.expPercent !== undefined);
-  const useStats = validStats && (review || hud.exp === undefined && (stats.exp !== undefined || hud.expPercent === undefined));
-  const progress = useStats ? stats : hud;
-  const expSource = progress.exp !== undefined || progress.expPercent !== undefined ? (useStats ? 'stats' : 'hud') : null;
-  return { name: stats.name, level: progress.level ?? stats.level, exp: progress.exp, expPercent: progress.expPercent, mesos: stats.mesos, expSource, inventory };
+  const expSource = hud.exp !== undefined || hud.expPercent !== undefined ? 'hud' : null;
+  return { name: stats.name, level: hud.level ?? stats.level, exp: hud.exp, expPercent: hud.expPercent, mesos: stats.mesos, expSource, expMarked: hud.marked, inventory };
 }
 
 export async function recognizeCharacterImage(worker, image, progress, cancelled) {

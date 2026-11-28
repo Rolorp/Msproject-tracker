@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#10241f">
   <meta name="description" content="Mide la EXP y los mesos por hora de tus sesiones de MapleStory Classic World.">
   <title>MSproject tracker</title>
-  <link rel="stylesheet" href="styles.css?v=0.7.2">
-  <script type="module" src="app.js?v=0.7.2"></script>
+  <link rel="stylesheet" href="styles.css?v=0.7.3">
+  <script type="module" src="app.js?v=0.7.3"></script>
 </head>
 <body>
   <header class="topbar">
@@ -89,6 +89,7 @@
             <button id="screen-read" class="secondary" type="button" hidden>Leer valores</button>
             <button id="screen-stop" class="text-button" type="button" hidden>Dejar de compartir</button>
             <button id="screen-save-frame" class="text-button" type="button" hidden>Guardar fotograma</button>
+            <button id="screen-mark-zones" class="text-button" type="button" hidden>Marcar zonas</button>
           </div>
           <p id="screen-status" class="form-hint" role="status"></p>
           <dl id="screen-diagnostics" class="screen-diagnostics" aria-label="Diagnóstico de captura">
@@ -149,6 +150,14 @@
       <div class="table-scroll" id="history-table" hidden><table><thead><tr><th>Fecha / personaje</th><th>Mapa</th><th>Tiempo activo</th><th>EXP / hora</th><th>Mesos / hora</th><th><span class="sr-only">Detalle</span></th></tr></thead><tbody id="history-body"></tbody></table></div>
     </section>
   </main>
+  <dialog id="screen-zone-dialog" aria-labelledby="screen-zone-heading">
+    <div class="section-heading"><h2 id="screen-zone-heading">Zonas de lectura</h2><button id="screen-zone-close" type="button" class="secondary">Cerrar</button></div>
+    <label>Dato<select id="screen-zone-kind"><option value="exp">EXP de la barra inferior</option><option value="mesos">Saldo de mesos del inventario</option></select></label>
+    <p id="screen-zone-hint" class="form-hint"></p>
+    <div class="screen-zone-preview"><canvas id="screen-zone-image" aria-label="Fotograma para marcar dos esquinas"></canvas><span id="screen-zone-box" hidden></span></div>
+    <p id="screen-zone-status" class="form-hint" role="status"></p>
+    <div class="screen-controls"><button id="screen-zone-apply" type="button" disabled>Usar zona</button><button id="screen-zone-reset" class="secondary" type="button">Restaurar automática</button></div>
+  </dialog>
   <dialog id="ocr-dialog" aria-labelledby="ocr-heading">
     <div class="section-heading"><h2 id="ocr-heading">Leer valores de una imagen</h2><button id="ocr-close" type="button" class="secondary">Cerrar</button></div>
     <p id="ocr-purpose" class="form-hint">Puedes usar una captura general con CHARACTER STAT, sus detalles e inventario visibles. Revisa los datos antes de aplicarlos.</p>
@@ -176,6 +185,6 @@
       <button id="ocr-apply" type="submit" disabled>Aplicar datos revisados</button>
     </form>
   </dialog>
-  <footer>MSproject tracker <span>v0.7.2 · Proyecto de fans independiente</span></footer>
+  <footer>MSproject tracker <span>v0.7.3 · Proyecto de fans independiente</span></footer>
 </body>
 </html>

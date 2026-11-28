@@ -129,12 +129,12 @@ function framedBox(image, area, minimumWidth, minimumHeight, maximumHeight, dark
   return best;
 }
 
-function balanceRegion(image, mask, coins) {
+function balanceRegion(image, mask, coins, smallCoins) {
   const { data, width, height } = image;
   let best = null, fallback = null;
   for (const coin of coins) {
     const h = coin.height;
-    if (coin.width / h < .6 || coin.width / h > 1.8 || coin.fill < .65 || h > Math.min(width, height) * .05) continue;
+    if (coin.width / h < .6 || coin.width / h > 1.8 || coin.fill < (smallCoins ? .52 : .65) || h > Math.min(width, height) * .05) continue;
     const area = { x0: coin.x1 - h, x1: coin.x1 + h * 22, y0: coin.y0 - h, y1: coin.y1 + h };
     const frame = framedBox(image, area, h * 7, h * .7, h * 2) ?? framedBox(image, area, h * 7, h * .7, h * 2, 165);
     if (frame && frame.x0 >= coin.x1 - h * .15 && frame.x0 < coin.x1 + h * 3) {
@@ -217,8 +217,8 @@ export function detectPanelRegions(image, balanceOnly = false, { smallCoins = fa
   const mask = colorMask(image);
   const visited = new Uint8Array(mask.length);
   const queue = new Int32Array(mask.length);
-  const coins = components(mask, YELLOW, width, height, visited, queue, smallCoins ? Math.max(4, width * .004) : undefined);
-  const balance = balanceRegion(image, mask, coins);
+  const coins = components(mask, YELLOW, width, height, visited, queue, smallCoins ? 4 : undefined);
+  const balance = balanceRegion(image, mask, coins, smallCoins);
   if (balanceOnly) return balance ? clipRegions([balance], width, height) : [];
   const greens = components(mask, GREEN, width, height, visited, queue);
   const blues = components(mask, BLUE, width, height, visited, queue);
@@ -286,7 +286,7 @@ export function hudGaugeRegions({ data, width, height }) {
     }
     for (const hp of red) for (const mp of blue) {
       const gap = mp.x - hp.x;
-      if (gap < width * .032 || gap > width * .19 || hp.width > gap * 1.06 || mp.width > gap * 1.16 ||
+      if (gap < Math.max(38, width * .016) || gap > width * .19 || hp.width > gap * 1.06 || mp.width > gap * 1.16 ||
           mp.x + gap * 1.7 > width) continue;
       const firstRow = (run, color) => {
         const x = run.x + Math.min(4, Math.floor(run.width / 2));
@@ -347,15 +347,18 @@ export function inventoryFooterRegions(image) {
   };
   const step = Math.max(3, Math.round(height / 450));
   const probe = Math.max(9, Math.floor(width * .035));
+  const offsets = [probe * 2, probe];
   const results = [];
   for (let y = step; y < height - step; y += step) {
-    for (let x = probe * 2; x < width - step * 3; x += 1) {
+    for (let x = probe; x < width - step * 3; x += 1) {
       const at = y * width + x;
       if (!(mask[at] & BLUE) || !(mask[at + step] & BLUE) || (mask[at - step] & BLUE)) continue;
-      if (!pale(x - step * 2, y) || !pale(x - probe * 2, y)) continue;
+      if (!pale(x - step * 2, y)) continue;
+      const offset = offsets.find(distance => x >= distance && pale(x - distance, y));
+      if (!offset) continue;
       let top = y, bottom = y + 1;
-      while (top > 0 && pale(x - probe * 2, top - 1)) top -= 1;
-      while (bottom < height && pale(x - probe * 2, bottom)) bottom += 1;
+      while (top > 0 && pale(x - offset, top - 1)) top -= 1;
+      while (bottom < height && pale(x - offset, bottom)) bottom += 1;
       const h = bottom - top;
       if (h < 5 || h > height * .05 || x + h * 2 >= width) continue;
       if (results.some(box => Math.abs(box.x1 - x) < h * .55 && Math.abs(box.y0 - top) < h * .5)) continue;

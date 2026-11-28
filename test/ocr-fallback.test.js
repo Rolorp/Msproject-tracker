@@ -47,6 +47,31 @@ test('lee la EXP de la barra aunque HP y MP queden tapados', async () => {
   }
 });
 
+test('la lectura de ventana mantiene la EXP pendiente cuando solo se ve la ficha', async () => {
+  const source = panelImage();
+  const previous = globalThis.document;
+  globalThis.document = { createElement: () => new PixelCanvas() };
+  let numericRows = 0;
+  let whitelist;
+  const worker = {
+    setParameters: async parameters => { whitelist = parameters.tessedit_char_whitelist; },
+    recognize: async () => {
+      if (whitelist === '0123456789.,%() ') numericRows += 1;
+      return { data: { text: whitelist === '0123456789.,%() ' ? '46' : '', blocks: [] } };
+    }
+  };
+  try {
+    const result = await recognizeSessionFrame(worker, source, () => false, true, false);
+    assert.equal(result.level, 46);
+    assert.equal(numericRows, 1);
+    assert.equal(result.exp, undefined);
+    assert.equal(result.expSource, null);
+  } finally {
+    if (previous === undefined) delete globalThis.document;
+    else globalThis.document = previous;
+  }
+});
+
 test('recupera todos los campos generales aunque haya ventanas detectadas y fallen los recortes', async () => {
   const image = panelImage();
   image.naturalWidth = image.width;

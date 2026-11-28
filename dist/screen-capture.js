@@ -1,6 +1,7 @@
-import { recognizeSessionFrame } from './ocr-image.js?v=0.7.2';
-import { createOcrWorker } from './ocr-worker.js?v=0.7.2';
-import { recordLiveProgress } from './session.js?v=0.7.2';
+import { recognizeSessionFrame } from './ocr-image.js?v=0.7.3';
+import { createOcrWorker } from './ocr-worker.js?v=0.7.3';
+import { recordLiveProgress } from './session.js?v=0.7.3';
+import { setupCaptureZones } from './screen-zones.js?v=0.7.3';
 
 const INTERVAL = 3500;
 const STALE_AFTER = 15000;
@@ -17,6 +18,7 @@ export function setupScreenCapture(getSession, applyValues) {
   const stop = $('screen-stop');
   const read = $('screen-read');
   const saveFrame = $('screen-save-frame');
+  const markZones = $('screen-mark-zones');
   const apply = $('screen-apply');
   const status = $('screen-status');
   let connection = null;
@@ -26,6 +28,9 @@ export function setupScreenCapture(getSession, applyValues) {
   let live = {};
   let diagnosis = null;
   let notice = 'Selecciona la ventana de MapleStory. Abre el inventario al tomar los valores iniciales y finales.';
+  const captureZones = setupCaptureZones(() => connection?.frame, () => {
+    takeReading(connection, getSession()?.status !== 'running', true);
+  });
 
   function stamp(value) {
     if (!value) return '';
@@ -38,8 +43,8 @@ export function setupScreenCapture(getSession, applyValues) {
     const detectedExp = diagnosis?.expSource;
     const absolute = diagnosis?.exp !== undefined;
     const expText = detectedExp
-      ? `${detectedExp === 'hud' ? 'Barra inferior' : 'Ficha del personaje'} · ${absolute ? 'EXP leída' : 'Solo porcentaje'} hace ${age(diagnosis)} s`
-      : 'Pendiente · deja visible la barra inferior';
+      ? `Barra inferior${diagnosis.expMarked ? ' · zona marcada' : ''} · ${absolute ? 'EXP leída' : 'Solo porcentaje'} hace ${age(diagnosis)} s`
+      : 'Pendiente · comprueba la barra o pulsa Marcar zonas';
     const mesosText = diagnosis?.inventory === 'read'
       ? `Saldo leído hace ${age(diagnosis)} s`
       : diagnosis?.inventory === 'unreadable'
@@ -73,6 +78,7 @@ export function setupScreenCapture(getSession, applyValues) {
     read.disabled = !!connection?.reading;
     read.textContent = tracking ? 'Leer ahora' : 'Leer valores';
     saveFrame.hidden = !connection?.frame;
+    markZones.hidden = !connection?.frame;
     apply.hidden = tracking || !review || !['level', 'exp', 'mesos', 'name'].some(key => review?.values[key] !== undefined);
     $('screen-review').hidden = tracking || !review;
     $('screen-live').hidden = !tracking || (!connection && !live.exp && !live.mesos);
@@ -166,12 +172,13 @@ export function setupScreenCapture(getSession, applyValues) {
     let timeout;
     try {
       const canvas = document.createElement('canvas');
-      const scale = Math.min(1, 2560 / Math.max(video.videoWidth, video.videoHeight));
+      const scale = Math.min(1, 3840 / Math.max(video.videoWidth, video.videoHeight));
       canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
       canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
       const context = canvas.getContext('2d', { willReadFrequently: true });
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
       const frame = context.getImageData(0, 0, canvas.width, canvas.height);
+      canvas.captureResolution = `${video.videoWidth}x${video.videoHeight}`;
       if (current.frame) current.frame.width = current.frame.height = 1;
       current.frame = canvas;
       let light = false;
@@ -199,7 +206,8 @@ export function setupScreenCapture(getSession, applyValues) {
       const searchInventory = forReview || force || capturedAt - (current.lastInventorySearch ?? 0) >= INVENTORY_RETRY;
       if (searchInventory) current.lastInventorySearch = capturedAt;
       const values = await Promise.race([
-        recognizeSessionFrame(current.worker, frame, () => !currentPhase(), forReview, searchInventory),
+        recognizeSessionFrame(current.worker, frame, () => !currentPhase(), forReview, searchInventory,
+          captureZones.forFrame(frame, canvas.captureResolution)),
         new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('Tiempo de lectura agotado')), 20000); })
       ]);
       if (!currentPhase() || !values) return;
@@ -207,7 +215,9 @@ export function setupScreenCapture(getSession, applyValues) {
       if (forReview) {
         review = { values, capturedAt };
         const needs = [];
-        if (values.exp === undefined) needs.push('La EXP absoluta está pendiente. Abre la ficha o completa el valor en el formulario.');
+        if (values.exp === undefined) needs.push(values.expPercent === undefined
+          ? 'EXP pendiente. Deja visible la barra inferior o pulsa Marcar zonas.'
+          : 'La barra muestra el porcentaje. Completa la EXP absoluta si la conoces.');
         if (values.mesos === undefined) needs.push('Abre el inventario para leer el saldo.');
         notice = needs.join(' ') || 'Revisa los valores y aplícalos al formulario.';
       } else {

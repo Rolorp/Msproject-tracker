@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractValues } from '../dist/ocr-parser.js';
+import { extractValues, parseHudExp } from '../dist/ocr-parser.js';
+
+test('interpreta la línea de EXP de la barra con y sin etiqueta o porcentaje', () => {
+  assert.deepEqual(parseHudExp('EXP. 82,689 [16.20%]'), { labeled: true, exp: 82689, expPercent: 16.2 });
+  assert.deepEqual(parseHudExp('82.689 16,20%'), { labeled: false, exp: 82689, expPercent: 16.2 });
+  assert.deepEqual(parseHudExp('EXP 82,689'), { labeled: true, exp: 82689, expPercent: undefined });
+  assert.deepEqual(parseHudExp('EXP [0.04%]'), { labeled: true, exp: undefined, expPercent: .04 });
+  assert.deepEqual(parseHudExp('HP 4/5'), { labeled: false, exp: undefined, expPercent: undefined });
+});
 
 test('lee números enteros y separadores de miles con varias etiquetas por línea', () => {
   const { values } = extractValues('LEVEL 32 EXP 12,345 (23.45%)\nMESOS 1.234.567\nAccuracy 1 234');
