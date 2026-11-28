@@ -1,10 +1,10 @@
-import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSession, finishSession } from './session.js?v=0.7.6';
-import { saveProfile } from './profile.js?v=0.7.6';
-import { emptyState, restoreState } from './state.js?v=0.7.6';
-import { setupImageImport } from './ocr.js?v=0.7.6';
-import { setupScreenCapture } from './screen-capture.js?v=0.7.6';
-import { ATTRIBUTES, CHARACTER_FIELDS, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js?v=0.7.6';
-import { JOBS, profileClass, classLabel } from './jobs.js?v=0.7.6';
+import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSession, finishSession } from './session.js?v=0.8.0';
+import { saveProfile } from './profile.js?v=0.8.0';
+import { emptyState, restoreState } from './state.js?v=0.8.0';
+import { setupImageImport } from './ocr.js?v=0.8.0';
+import { setupScreenCapture } from './screen-capture.js?v=0.8.0';
+import { ATTRIBUTES, CHARACTER_FIELDS, COMBAT_FIELDS, PROGRESS_FIELDS } from './character-fields.js?v=0.8.0';
+import { JOBS, profileClass, classLabel, validClass } from './jobs.js?v=0.8.0';
 
 const STORAGE_KEY = 'msproject-tracker.v1';
 const $ = id => document.getElementById(id);
@@ -17,9 +17,9 @@ let initializedFinishId = null;
 let editingProfileId = null;
 let editingProfileRevision = null;
 let savingProfile = false;
+const capturedInputs = new WeakMap();
 
-function updateSpecializations(value = '') {
-  const form = $('profile-form');
+function updateSpecializations(value = '', form = $('profile-form')) {
   const selector = form.elements.specialization;
   selector.replaceChildren(new Option('Sin especificar / primer avance', ''),
     ...(JOBS[form.elements.job.value] || []).map(name => new Option(name, name)));
@@ -109,12 +109,18 @@ function applySelectedProfile(fillProgress = false) {
   const form = $('start-form');
   form.elements.character.readOnly = !!profile;
   form.elements.level.readOnly = !!profile;
+  form.elements.job.disabled = !!profile;
+  form.elements.specialization.disabled = !!profile;
   if (profile) {
     form.elements.character.value = profile.name;
     form.elements.level.value = profile.level;
+    const { job, specialization } = profileClass(profile);
+    form.elements.job.value = job;
+    updateSpecializations(specialization, form);
     if (fillProgress) {
       form.elements.exp.value = profile.progress?.exp ?? '';
       form.elements.mesos.value = profile.progress?.mesos ?? '';
+      for (const field of ['exp', 'mesos']) capturedInputs.set(form.elements[field], form.elements[field].value);
     }
   }
 }
@@ -234,6 +240,17 @@ function renderRequirements() {
   }
 }
 
+function setCaptureField(control, value) {
+  if (value === undefined || value === null || control.readOnly || control.disabled) return false;
+  if (control.value !== '' && control.value !== capturedInputs.get(control)) return false;
+  if (control.value !== String(value)) {
+    control.value = value;
+    control.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  capturedInputs.set(control, control.value);
+  return true;
+}
+
 function applyScreenValues(values) {
   const session = state.current;
   if (session && session.status !== 'finishing') return 'Los valores se pueden aplicar antes de iniciar o al finalizar.';
@@ -247,16 +264,30 @@ function applyScreenValues(values) {
       session && values.level < session.initialLevel)) {
     return 'El nivel leído no coincide con el perfil o con la sesión. Revisa el nivel antes de aplicar.';
   }
-  if (!session && values.name && !form.elements.character.readOnly) {
-    form.elements.character.value = values.name;
+  if (!session) {
+    setCaptureField(form.elements.character, values.name);
+    setCaptureField(form.elements.map, values.map);
+    if (values.job && validClass(values.job, values.specialization)) {
+      setCaptureField(form.elements.job, values.job);
+      if (form.elements.job.value === values.job) setCaptureField(form.elements.specialization, values.specialization);
+    }
   }
   for (const key of ['level', 'exp', 'mesos']) {
-    const control = form.elements.namedItem(key);
-    if (values[key] === undefined || control.readOnly) continue;
-    control.value = values[key];
-    control.dispatchEvent(new Event('input', { bubbles: true }));
+    setCaptureField(form.elements[key], values[key]);
   }
-  return 'Lectura aplicada. Revisa los datos del formulario antes de continuar.';
+  return '';
+}
+
+function sessionCharacter(session) {
+  const job = session.job || (session.characterSnapshot && profileClass(session.characterSnapshot).job);
+  const specialization = session.specialization || session.characterSnapshot?.specialization;
+  return [session.character || 'Sin personaje', job, specialization].filter(Boolean).join(' · ');
+}
+
+function showFormFeedback(form, text = '') {
+  const feedback = $(`${form.id}-feedback`);
+  feedback.textContent = text;
+  feedback.hidden = !text;
 }
 
 function renderResults() {
@@ -287,8 +318,7 @@ function renderHistory() {
       row.append(cell);
     }
     const character = document.createElement('small');
-    character.textContent = session.character || 'Sin personaje';
-    if (session.characterSnapshot) character.textContent += ` · ${classLabel(session.characterSnapshot)}`;
+    character.textContent = sessionCharacter(session);
     row.cells[0].append(character);
     const actionCell = document.createElement('td');
     const action = document.createElement('button');
@@ -319,7 +349,7 @@ function render() {
   $('status').textContent = statuses[session?.status] || 'Lista para empezar';
   $('running-heading').textContent = session?.status === 'paused' ? 'Sesión en pausa' : 'Sesión en curso';
   $('session-context').textContent = session
-    ? [session.character || 'Tu personaje', session.map || 'Sin mapa'].join(' · ')
+    ? [sessionCharacter(session), session.map || 'Sin mapa'].join(' · ')
     : 'Introduce tus valores actuales y pulsa Iniciar.';
   if (session) fillInitialValues(session);
   if (isFinishing && initializedFinishId !== session.id) {
@@ -327,10 +357,12 @@ function render() {
     form.reset();
     form.elements.level.value = session.initialLevel;
     form.elements.level.min = session.initialLevel;
+    capturedInputs.set(form.elements.level, form.elements.level.value);
+    showFormFeedback(form);
     $('level-requirements').replaceChildren();
     initializedFinishId = session.id;
   }
-  if (!session) initializedFinishId = null;
+  if (!isFinishing) initializedFinishId = null;
   renderProfiles();
   updateClock();
   renderHistory();
@@ -340,6 +372,7 @@ function render() {
 
 $('start-form').addEventListener('submit', event => {
   event.preventDefault();
+  showFormFeedback(event.target);
   const data = Object.fromEntries(new FormData(event.target));
   updateState(current => {
     if (current.current) throw new Error('Ya tienes una sesión abierta.');
@@ -393,22 +426,45 @@ $('pause').addEventListener('click', () => updateState(current => ({
     ? resumeSession(current.current, Date.now()) : pauseSession(current.current, Date.now())
 })));
 
-$('stop').addEventListener('click', () => updateState(current => ({ ...current, current: stopSession(current.current, Date.now()) })));
+$('stop').addEventListener('click', () => {
+  const endedAt = Date.now();
+  updateState(current => ({ ...current, current: stopSession(current.current, endedAt) }));
+});
 $('continue').addEventListener('click', () => updateState(current => {
   const session = { ...current.current, status: 'paused' };
   delete session.endedAt;
   return { ...current, current: session };
 }));
 $('finish-form').elements.level.addEventListener('input', renderRequirements);
-$('finish-form').addEventListener('submit', event => {
+$('finish-form').addEventListener('submit', async event => {
   event.preventDefault();
+  showFormFeedback(event.target);
   const data = Object.fromEntries(new FormData(event.target));
   data.expRequirements = [...$('level-requirements').querySelectorAll('input')].map(input => input.value);
-  updateState(current => {
+  const saved = await updateState(current => {
     const completed = finishSession(current.current, data);
     return { ...current, current: null, history: [completed, ...current.history] };
   });
+  if (saved) {
+    const { elements } = $('start-form');
+    for (const field of ['exp', 'mesos']) elements[field].value = '';
+    for (const field of ['character', 'job', 'specialization', 'map', 'level']) {
+      const control = elements[field];
+      if (!control.readOnly && !control.disabled && control.value === capturedInputs.get(control)) control.value = '';
+    }
+    updateSpecializations(elements.specialization.value, $('start-form'));
+  }
 });
+
+for (const id of ['start-form', 'finish-form']) {
+  const form = $(id);
+  form.addEventListener('invalid', () => {
+    const labels = { level: 'nivel', exp: 'EXP', mesos: 'mesos' };
+    const missing = Object.keys(labels).filter(key => form.elements[key].validity.valueMissing);
+    if (missing.length) showFormFeedback(form, `Faltan estos datos: ${missing.map(key => labels[key]).join(', ')}. Escríbelos en el formulario o vuelve a leer la ventana.`);
+  }, true);
+  form.addEventListener('input', () => showFormFeedback(form));
+}
 $('time-basis').addEventListener('change', renderResults);
 
 function csvText(value) {
@@ -419,7 +475,7 @@ function csvText(value) {
 }
 
 $('export').addEventListener('click', () => {
-  const headers = ['id', 'inicio', 'fin', 'personaje', 'mapa', 'nivel_inicial', 'nivel_final', 'exp_inicial', 'exp_final', 'exp_requerida_por_nivel_manual', 'mesos_iniciales', 'mesos_finales', 'depositos_externos', 'retiros_externos', 'coste_consumibles_inventario', 'segundos_activos', 'segundos_totales', 'exp_ganada', 'mesos_netos', 'exp_h_activa', 'mesos_h_activa', 'exp_h_total', 'mesos_h_total', 'perfil_id', 'perfil_al_inicio_json'];
+  const headers = ['id', 'inicio', 'fin', 'personaje', 'mapa', 'nivel_inicial', 'nivel_final', 'exp_inicial', 'exp_final', 'exp_requerida_por_nivel_manual', 'mesos_iniciales', 'mesos_finales', 'depositos_externos', 'retiros_externos', 'coste_consumibles_inventario', 'segundos_activos', 'segundos_totales', 'exp_ganada', 'mesos_netos', 'exp_h_activa', 'mesos_h_activa', 'exp_h_total', 'mesos_h_total', 'perfil_id', 'perfil_al_inicio_json', 'job', 'especializacion'];
   const rows = state.history.map(session => [
     csvText(session.id), csvText(new Date(session.startedAt).toISOString()), csvText(new Date(session.endedAt).toISOString()),
     csvText(session.character), csvText(session.map), session.initialLevel, session.finalLevel,
@@ -427,7 +483,7 @@ $('export').addEventListener('click', () => {
     session.initialMesos, session.finalMesos, session.externalDeposits, session.externalWithdrawals, session.inventoryCost,
     session.activeMs / 1000, session.elapsedMs / 1000, session.expGained, session.netMesos,
     session.expPerHour, session.mesosPerHour, session.elapsedExpPerHour, session.elapsedMesosPerHour,
-    csvText(session.profileId), csvText(JSON.stringify(session.characterSnapshot ?? null))
+    csvText(session.profileId), csvText(JSON.stringify(session.characterSnapshot ?? null)), csvText(session.job), csvText(session.specialization)
   ].join(','));
   const blob = new Blob(['\uFEFF', headers.join(','), '\r\n', rows.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -468,7 +524,10 @@ function appendNumericFields(fields, containerId) {
 appendNumericFields([...PROGRESS_FIELDS, ...CHARACTER_FIELDS.filter(field => ['fame', 'apAvailable'].includes(field.key))], 'profile-progress-fields');
 appendNumericFields(CHARACTER_FIELDS.filter(field => ATTRIBUTES.some(key => field.key === `${key}Total`)), 'profile-attribute-fields');
 appendNumericFields(COMBAT_FIELDS.filter(field => field.key !== 'weaponAttack'), 'profile-combat-fields');
-setupImageImport();
+const startForm = $('start-form');
+startForm.elements.job.append(...Object.keys(JOBS).map(job => new Option(job, job)));
+startForm.elements.job.addEventListener('input', () => updateSpecializations(startForm.elements.specialization.value, startForm));
+setupImageImport(applyScreenValues);
 const screenCapture = setupScreenCapture(() => state.current, applyScreenValues);
 $('profile-form').elements.job.addEventListener('input', () => updateSpecializations($('profile-form').elements.specialization.value));
 render();

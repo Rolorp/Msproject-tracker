@@ -1,5 +1,5 @@
-import { CHARACTER_FIELDS } from './character-fields.js?v=0.7.6';
-import { parseOcrClass, validClass } from './jobs.js?v=0.7.6';
+import { CHARACTER_FIELDS } from './character-fields.js?v=0.8.0';
+import { parseOcrClass, validClass } from './jobs.js?v=0.8.0';
 
 export const OCR_FIELDS = CHARACTER_FIELDS;
 

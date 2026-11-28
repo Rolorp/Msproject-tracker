@@ -1,4 +1,4 @@
-import { parseOcrClass, validClass } from './jobs.js?v=0.7.6';
+import { parseOcrClass, validClass } from './jobs.js?v=0.8.0';
 
 // Classic World EXP to the next level. Only the documented range is used.
 // https://mapleclassic.wiki/wiki/Module:ExperienceCurve

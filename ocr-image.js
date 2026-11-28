@@ -1,8 +1,8 @@
-import { detectPanelRegions, resourceParts, mesosLabelRegions, inventoryLabelRegions, inventoryFooterRegions, hudGaugeRegions } from './ocr-panels.js?v=0.7.6';
-import { extractValues, layoutText, OCR_FIELDS, parseHudExp, parseJoinedHudExp } from './ocr-parser.js?v=0.7.6';
-import { extractHudClass, rightAlignedBalance, confirmedBalance, hasHudExperienceReference, hudExperienceFits, mergeReadings } from './ocr-evidence.js?v=0.7.6';
-import { balanceDigits, resizePixels, panelPixels, trimBalanceBorders } from './ocr-pixels.js?v=0.7.6';
-import { parseOcrClass } from './jobs.js?v=0.7.6';
+import { detectPanelRegions, resourceParts, mesosLabelRegions, inventoryLabelRegions, inventoryFooterRegions, hudGaugeRegions, hudIdentityBox } from './ocr-panels.js?v=0.8.0';
+import { extractValues, layoutText, OCR_FIELDS, parseHudExp, parseJoinedHudExp } from './ocr-parser.js?v=0.8.0';
+import { extractHudClass, rightAlignedBalance, confirmedBalance, hasHudExperienceReference, hudExperienceFits, mergeReadings } from './ocr-evidence.js?v=0.8.0';
+import { balanceDigits, resizePixels, panelPixels, trimBalanceBorders } from './ocr-pixels.js?v=0.8.0';
+import { parseOcrClass } from './jobs.js?v=0.8.0';
 
 function imagePixels(image) {
   const canvas = document.createElement('canvas');
@@ -111,7 +111,8 @@ async function readBalance(worker, image, box, cancelled, requireAlignment = tru
     const legible = !smallField || readings.every(reading => reading.confidence >= 90);
     confirmed.set(value, { formatted: formatted || previous?.formatted, legible: legible || previous?.legible, count: (previous?.count ?? 0) + 1 });
   }
-  const complete = [...confirmed].filter(([, reading]) => reading.formatted && reading.legible && reading.count >= minimumMatches);
+  const complete = [...confirmed].filter(([, reading]) => reading.formatted &&
+    (reading.legible || reading.count >= 3) && reading.count >= minimumMatches);
   if (confirmed.size === 1 && complete.length === 1) return complete[0][0];
   return trimBorders && !smallField ? readIsolatedBalance(worker, image, interior, cancelled) : '';
 }
@@ -144,6 +145,81 @@ async function readSpecialization(worker, source, box, job, cancelled, mode = '7
 function wordsOf(blocks = []) {
   return (blocks || []).flatMap(block => (block.paragraphs || []).flatMap(paragraph =>
     (paragraph.lines || []).flatMap(line => line.words || [])));
+}
+
+function characterName(text) {
+  const name = String(text ?? '').trim();
+  return /^(?=.*[A-Za-z])[A-Za-z0-9]{2,16}$/.test(name) && !parseOcrClass(name).job ? name : undefined;
+}
+
+async function readHudIdentity(worker, source, box, cancelled) {
+  if (!box || box.x1 <= box.x0 || box.y1 <= box.y0 || cancelled()) return {};
+  await worker.setParameters({ tessedit_pageseg_mode: '6', tessedit_char_whitelist: '' });
+  const { data } = await worker.recognize(panelImage(source, box, { invert: true }));
+  const lines = data.text.trim().split(/\n+/).map(line => line.trim()).filter(Boolean);
+  const classIndex = lines.findIndex(line => parseOcrClass(line).job);
+  const identity = classIndex >= 0 ? parseOcrClass(lines[classIndex]) : {};
+  const name = characterName(lines[classIndex + 1]);
+  if (classIndex >= 0 && name) return { ...identity, name };
+
+  if (!identity.job && !cancelled()) {
+    await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: '' });
+    const { data: job } = await worker.recognize(panelImage(source, { ...box, y1: box.split }, { invert: true }));
+    Object.assign(identity, parseOcrClass(job.text));
+  }
+  if (!cancelled()) {
+    await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789' });
+    const { data: nameRow } = await worker.recognize(panelImage(source, { ...box, y0: box.split }, { invert: true }));
+    identity.name = characterName(nameRow.text);
+  }
+  return identity;
+}
+
+async function readMinimap(worker, source, gap, cancelled) {
+  if (cancelled()) return undefined;
+  const bands = [];
+  for (let y = 0; y < Math.min(source.height, gap * .68); y += 1) {
+    let pale = 0, total = 0;
+    for (let x = Math.ceil(gap * .09); x < Math.min(source.width, gap * 1.24); x += 3) {
+      const i = (y * source.width + x) * 4;
+      if (Math.min(source.data[i], source.data[i + 1], source.data[i + 2]) > 208) pale += 1;
+      total += 1;
+    }
+    if (!total || pale < total * .65) continue;
+    const previous = bands.at(-1);
+    if (previous && previous.y1 === y) previous.y1 = y + 1;
+    else bands.push({ y0: y, y1: y + 1 });
+  }
+  let bottom;
+  for (const band of bands.filter(box => box.y1 - box.y0 >= Math.max(5, gap * .065) && box.y1 - box.y0 <= gap * .27).slice(0, 3)) {
+    if (cancelled()) return undefined;
+    await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: '' });
+    const { data } = await worker.recognize(panelImage(source, { ...band, x0: 0, x1: Math.min(source.width, gap * .76) }));
+    if (/^MINI\s*[MN]AP\b/i.test(data.text.trim())) {
+      bottom = band.y1;
+      break;
+    }
+  }
+  if (bottom === undefined || cancelled()) return undefined;
+  const box = { x0: gap * .37, x1: Math.min(source.width, gap * 1.96),
+    y0: bottom + gap * .025, y1: Math.min(source.height, bottom + gap * .395) };
+
+  // An open minimap displays the location on a light blue panel below its title.
+  let blue = 0, sampled = 0;
+  for (let row = Math.ceil(box.y0); row < box.y1; row += 2) {
+    for (let column = Math.ceil(box.x0); column < box.x1; column += 4) {
+      const offset = (row * source.width + column) * 4;
+      const red = source.data[offset], green = source.data[offset + 1], blueChannel = source.data[offset + 2];
+      if (green > red + 12 && blueChannel > red + 24 && green > 115) blue += 1;
+      sampled += 1;
+    }
+  }
+  if (!sampled || blue / sampled < .40) return undefined;
+  await worker.setParameters({ tessedit_pageseg_mode: '6', tessedit_char_whitelist: '' });
+  const { data: location } = await worker.recognize(panelImage(source, box, { invert: true, whiteText: true }));
+  const names = location.text.split('\n').map(line => line.trim().replace(/^[^\p{L}\p{N}]+|[\s|_]+$/gu, ''))
+    .filter(line => /\p{L}{2}/u.test(line) && !/^(?:WORLD|MINI MAP|MINIMAP)$/i.test(line));
+  return [...new Set(names)].slice(0, 2).join(' · ').slice(0, 100) || undefined;
 }
 
 function levelBadges(hud, expBox, search) {
@@ -288,8 +364,14 @@ async function readCenteredHud(worker, source, cancelled, markedBox) {
   const regions = hudGaugeRegions(source);
   const level = regions ? await readBadgeLevel(worker, source, regions.exp, cancelled, regions.level)
     : markedBox ? await readBottomLevel(worker, source, markedBox, cancelled) : undefined;
-  const reference = { level, fillPercent: regions?.fillPercent };
+  const reference = { level, fillPercent: regions?.fillPercent, identity: regions?.identity, gap: regions?.gap };
   const automatic = regions ? await readHudRegion(worker, source, regions.exp, cancelled, reference) : {};
+  if (level === undefined && automatic.exp === undefined) {
+    // A decoration can resemble the resource bars before a HUD value confirms the region.
+    delete reference.identity;
+    delete reference.gap;
+    delete reference.fillPercent;
+  }
   if (markedBox) {
     const marked = await readHudCrop(worker, source, markedBox, cancelled, {
       isolated: true, reference: { ...reference, expPercent: automatic.expPercent }
@@ -351,16 +433,27 @@ async function readHudProgress(worker, source, cancelled, reference, highContras
     word.bbox.x1 < expBox.x0 + height * 16 && Math.abs(word.bbox.y0 - expBox.y0) <= height * .6)
     .sort((a, b) => a.bbox.x0 - b.bbox.x0);
   const badges = levelBadges(hud, expBox);
-  const withResource = words.some(word => /^[HM]P(?:\W|\d|$)/i.test(word.text) && word.bbox.x1 < expBox.x0 &&
-    Math.abs(word.bbox.y0 - expBox.y0) < height * 1.05);
+  const resource = words.filter(word => /^[HM]P(?:\W|\d|$)/i.test(word.text) && word.bbox.x1 < expBox.x0 &&
+    Math.abs(word.bbox.y0 - expBox.y0) < height * 1.05).sort((a, b) => b.bbox.x0 - a.bbox.x0)[0];
   const anchorText = [expWord.text, ...amounts.map(word => word.text)].join(' ');
   const initial = parseHudExp(anchorText);
-  if (!withResource && !badges.length && initial.expPercent === undefined) return {};
+  if (!resource && !badges.length && initial.expPercent === undefined) return {};
   const hudLevel = rows.find(text => /^\s*LV[.:]?\s*\d/i.test(text) && /\bEXP\b/i.test(text));
   const level = reference.level ?? (hudLevel && extractValues(hudLevel).values.level)
     ?? await readBadgeLevel(worker, hud, expBox, cancelled);
   const expPercent = reference.expPercent ?? initial.expPercent;
   const values = { level, expPercent };
+  if (resource && !reference.identity) {
+    const gaugeWidth = (expBox.x0 - resource.bbox.x0) / (/^MP/i.test(resource.text) ? 1 : 2);
+    if (gaugeWidth >= height * 6 && gaugeWidth <= height * 18) {
+      const xScale = hudBox.x1 / hud.width;
+      const yScale = (hudBox.y1 - hudBox.y0) / hud.height;
+      const hpX = (expBox.x0 - gaugeWidth * 2) * xScale;
+      values.gap = gaugeWidth * xScale;
+      values.identity = hudIdentityBox(source.height, hpX, values.gap,
+        hudBox.y0 + (expBox.y0 + gaugeWidth * .14) * yScale);
+    }
+  }
   if (initial.exp !== undefined && hudExperienceFits(level, initial.exp, expPercent, reference.fillPercent)) values.exp = initial.exp;
 
   if (!cancelled()) {
@@ -422,19 +515,20 @@ function isMarkedWalletVisible(source, box) {
   return sampled > 0 && pale / sampled >= .65 && blue / sampled >= .25;
 }
 
-export async function recognizeSessionFrame(worker, source, cancelled, review = false, searchInventory = true, zones = {}, onHud) {
+export async function recognizeSessionFrame(worker, source, cancelled, review = false, searchInventory = true, zones = {}, onPartial) {
   let hud = {};
   try {
     hud = await readCenteredHud(worker, source, cancelled, zones.exp);
     if (!cancelled() && hud.exp === undefined) {
       hud = await readBottomExp(worker, source, cancelled, hud);
     }
-    if (!cancelled() && (hud.level === undefined || hud.exp === undefined)) {
+    if (!cancelled() && (hud.level === undefined || hud.exp === undefined || review && !hud.identity)) {
       const fallback = await readHudProgress(worker, source, cancelled, hud);
       const level = hud.level ?? fallback.level;
       const expPercent = hud.expPercent ?? fallback.expPercent;
       const keepAmount = hud.exp !== undefined && hudExperienceFits(level, hud.exp, expPercent, hud.fillPercent);
-      hud = { ...hud, level, expPercent, exp: keepAmount ? hud.exp : fallback.exp };
+      hud = { ...hud, level, expPercent, exp: keepAmount ? hud.exp : fallback.exp,
+        identity: hud.identity ?? fallback.identity, gap: hud.gap ?? fallback.gap };
     }
     if (!cancelled() && hud.exp === undefined) {
       const fallback = await readHudProgress(worker, source, cancelled, hud, true);
@@ -445,13 +539,23 @@ export async function recognizeSessionFrame(worker, source, cancelled, review = 
   }
   if (cancelled()) return null;
   const progress = { exp: hud.exp, expSource: hud.exp !== undefined ? 'hud' : null, expMarked: hud.marked };
-  if (progress.expSource) onHud?.({ ...progress, level: hud.level, inventory: 'pending' });
+  if (progress.expSource) onPartial?.({ ...progress, level: hud.level, inventory: 'pending' });
   const needStats = review || hud.level === undefined;
   const scale = Math.min(2, 1920 / source.width, 1920 / source.height);
   const analysis = resizePixels(source, { x0: 0, y0: 0, x1: source.width, y1: source.height }, Math.round(source.width * scale), Math.round(source.height * scale));
   const regions = detectPanelRegions(analysis, !needStats, { smallCoins: true });
   const lines = [];
   let inventory = 'missing';
+  let hudIdentity = {};
+  let job = {};
+  let map;
+  function values() {
+    const stats = extractValues(lines.join('\n')).values;
+    const parsedJob = job.job || hudIdentity.job || undefined;
+    return { ...progress, name: characterName(stats.name) ?? hudIdentity.name, level: hud.level ?? stats.level,
+      job: parsedJob, specialization: job.specialization || (hudIdentity.job === parsedJob ? hudIdentity.specialization : undefined) || undefined,
+      map, mesos: stats.mesos, inventory };
+  }
   if (zones.mesos && isMarkedWalletVisible(source, zones.mesos) && !cancelled()) {
     inventory = 'unreadable';
     try {
@@ -467,7 +571,7 @@ export async function recognizeSessionFrame(worker, source, cancelled, review = 
   for (const region of regions) {
     if (cancelled()) return null;
     const label = region.label;
-    if (!['LEVEL', 'MESOS'].includes(label) && !(review && label === 'NAME')) continue;
+    if (!['LEVEL', 'MESOS'].includes(label) && !(review && ['NAME', 'JOB'].includes(label))) continue;
     const box = originalBox(source, analysis, region);
     try {
       if (label === 'MESOS') {
@@ -480,6 +584,16 @@ export async function recognizeSessionFrame(worker, source, cancelled, review = 
         }
         continue;
       }
+      if (label === 'JOB') {
+        await worker.setParameters({ tessedit_pageseg_mode: '6', tessedit_char_whitelist: '' });
+        const { data } = await worker.recognize(panelImage(source, box));
+        const parts = data.text.trim().split('\n').map(parseOcrClass).filter(part => part.job);
+        job = parts.find(part => part.specialization && part.job === parts[0].job) ?? parts[0] ?? {};
+        if (job.job && !job.specialization) {
+          job = await readSpecialization(worker, source, box, job.job, cancelled, '6') ?? job;
+        }
+        continue;
+      }
       await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: label === 'NAME' ? '' : '0123456789.,%() ' });
       const { data } = await worker.recognize(panelImage(source, box));
       lines.push(`${label} ${data.text.trim()}`);
@@ -487,7 +601,8 @@ export async function recognizeSessionFrame(worker, source, cancelled, review = 
       // Keep the other recognized fields when a single region fails.
     }
   }
-  if (inventory !== 'read' && searchInventory && source.width > analysis.width * 1.2 && !cancelled()) {
+  if (inventory !== 'read' && searchInventory &&
+      Math.max(source.width / analysis.width, analysis.width / source.width) > 1.12 && !cancelled()) {
     try {
       const [region] = detectPanelRegions(source, true, { smallCoins: true });
       if (region) {
@@ -502,6 +617,24 @@ export async function recognizeSessionFrame(worker, source, cancelled, review = 
       // A label or footer search remains available when the icon is unclear.
     }
   }
+  if (review && !cancelled()) {
+    try {
+      hudIdentity = await readHudIdentity(worker, source, hud.identity, cancelled);
+    } catch {
+      // The character panel can still supply the identity fields.
+    }
+    try {
+      map = await readMinimap(worker, source, hud.gap ?? Math.min(source.width * .08, source.height * .17), cancelled);
+    } catch {
+      // The map is optional.
+    }
+    if (!cancelled()) {
+      const partial = values();
+      if ([partial.exp, partial.level, partial.mesos, partial.name, partial.job, partial.map].some(value => value !== undefined)) {
+        onPartial?.({ ...partial, inventory: inventory === 'read' ? 'read' : 'pending' });
+      }
+    }
+  }
   if (inventory !== 'read' && searchInventory && !cancelled()) {
     try {
       const footerImage = source.width >= analysis.width ? source : analysis;
@@ -509,7 +642,7 @@ export async function recognizeSessionFrame(worker, source, cancelled, review = 
         if (cancelled()) return null;
         await worker.setParameters({ tessedit_pageseg_mode: '13', tessedit_char_whitelist: 'MESO05' });
         const { data } = await worker.recognize(panelImage(source, originalBox(source, footerImage, region.labelBox), { invert: true }));
-        if (!/^MES[O0][S5]$/i.test(data.text.trim().replace(/\s/g, ''))) continue;
+        if (!/^ME[S5][O0][S5]$/i.test(data.text.trim().replace(/\s/g, ''))) continue;
         inventory = 'unreadable';
         const value = await readBalance(worker, source, originalBox(source, footerImage, region), cancelled, true, true);
         if (!value) continue;
@@ -543,8 +676,7 @@ export async function recognizeSessionFrame(worker, source, cancelled, review = 
     }
   }
   if (cancelled()) return null;
-  const stats = extractValues(lines.join('\n')).values;
-  return { ...progress, name: stats.name, level: hud.level ?? stats.level, mesos: stats.mesos, inventory };
+  return values();
 }
 
 export async function recognizeCharacterImage(worker, image, progress, cancelled) {

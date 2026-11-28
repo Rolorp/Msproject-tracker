@@ -1,3 +1,5 @@
+import { profileClass, validClass } from './jobs.js?v=0.8.0';
+
 export function integer(value, label, minimum = 0) {
   if (String(value).trim() === '') throw new Error(`Completa ${label}.`);
   const number = Number(value);
@@ -15,6 +17,12 @@ export function createSession(data, now, id, profile = null) {
   }
   const initialExp = integer(data.exp, 'la EXP inicial');
   const initialMesos = integer(data.mesos, 'los mesos iniciales');
+  const { job, specialization } = profile ? profileClass(profile) : {
+    job: String(data.job || ''), specialization: String(data.specialization || '')
+  };
+  if ((job || specialization) && !validClass(job, specialization)) {
+    throw new Error('Selecciona un job y una especialización compatible.');
+  }
   const characterSnapshot = profile ? JSON.parse(JSON.stringify(profile)) : null;
   if (characterSnapshot) {
     characterSnapshot.progress = {
@@ -27,6 +35,8 @@ export function createSession(data, now, id, profile = null) {
   return {
     id,
     character,
+    job,
+    specialization,
     map: String(data.map || '').trim(),
     initialLevel: level,
     initialExp,
@@ -63,6 +73,13 @@ export function recordLiveProgress(previous, values, session, capturedAt) {
   next.exp = { value: exp, level, capturedAt, rate: level === session.initialLevel && hours > 0
     ? (exp - session.initialExp) / hours : null };
   return next;
+}
+
+export function freshFinishReading(reading, endedAt) {
+  if (!reading || !Number.isFinite(reading.capturedAt) || reading.capturedAt > endedAt || endedAt - reading.capturedAt > 2000) return null;
+  const { level, exp, mesos } = reading.values;
+  return Number.isSafeInteger(level) && level >= 1 && [exp, mesos].every(value => Number.isSafeInteger(value) && value >= 0)
+    ? reading : null;
 }
 
 export function pauseSession(session, now) {

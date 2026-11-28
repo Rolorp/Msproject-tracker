@@ -264,6 +264,11 @@ export function detectPanelRegions(image, balanceOnly = false, { smallCoins = fa
 
 // The HUD stays centered on wide windows. Locate the start of the HP and
 // MP fills to infer where the next slot (EXP) and the level badge are.
+export function hudIdentityBox(height, hpX, gap, top) {
+  return { x0: Math.max(0, hpX - gap * 1.28), x1: hpX - gap * .07,
+    y0: Math.max(0, top - gap * .19), y1: Math.min(height, top + gap * .14), split: top - gap * .025 };
+}
+
 export function hudGaugeRegions({ data, width, height }) {
   const tone = (x, y) => {
     const offset = (y * width + x) * 4;
@@ -302,6 +307,8 @@ export function hudGaugeRegions({ data, width, height }) {
       const fill = yellow.find(run => run.x >= mp.x + gap * .95 && run.x <= mp.x + gap * 1.13 &&
         run.width >= gap * .07 && run.width <= gap * 1.13 && firstRow(run, 3) >= top - gap * .035);
       return {
+        gap,
+        identity: hudIdentityBox(height, hp.x, gap, top),
         fillPercent: fill && Math.min(100, fill.width * 100 / (gap * 1.06)),
         exp: { x0: Math.max(0, mp.x + gap * .94), x1: Math.min(width, mp.x + gap * 2.08),
           y0: Math.max(0, top - gap * .145), y1: top - gap * .025 },
@@ -351,11 +358,10 @@ export function inventoryFooterRegions(image) {
     return Math.min(r, g, b) > 172 && Math.max(r, g, b) - Math.min(r, g, b) < 42;
   };
   const step = Math.max(3, Math.round(height / 450));
-  const probe = Math.max(9, Math.floor(width * .035));
-  const offsets = [probe * 2, probe];
+  const offsets = [.07, .035, .017, .008].map(fraction => Math.max(8, Math.floor(width * fraction)));
   const results = [];
   for (let y = step; y < height - step; y += step) {
-    for (let x = probe; x < width - step * 3; x += 1) {
+    for (let x = Math.max(offsets.at(-1), step * 2); x < width - step * 3; x += 1) {
       const at = y * width + x;
       if (!(mask[at] & BLUE) || !(mask[at + step] & BLUE) || (mask[at - step] & BLUE)) continue;
       if (!pale(x - step * 2, y)) continue;
@@ -366,6 +372,7 @@ export function inventoryFooterRegions(image) {
       while (bottom < height && pale(x - offset, bottom)) bottom += 1;
       const h = bottom - top;
       if (h < 5 || h > height * .05 || x + h * 2 >= width) continue;
+      if (x < h * 5 || !pale(x - Math.ceil(h * 5), y)) continue;
       if (results.some(box => Math.abs(box.x1 - x) < h * .55 && Math.abs(box.y0 - top) < h * .5)) continue;
       const box = { label: 'MESOS', x0: Math.max(0, x - h * 9), x1: x - step, y0: top, y1: bottom };
       const labelBox = { x0: x + 2, x1: Math.min(width, x + h * 3), y0: Math.max(0, top - h * .15), y1: Math.min(height, bottom + h * .15) };
