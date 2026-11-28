@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#10241f">
   <meta name="description" content="Mide la EXP y los mesos por hora de tus sesiones de MapleStory Classic World.">
   <title>MSproject tracker</title>
-  <link rel="stylesheet" href="styles.css?v=0.7.6">
-  <script type="module" src="app.js?v=0.7.6"></script>
+  <link rel="stylesheet" href="styles.css?v=0.8.0">
+  <script type="module" src="app.js?v=0.8.0"></script>
 </head>
 <body>
   <header class="topbar">
@@ -98,7 +98,6 @@
             <div><dt>Mesos</dt><dd id="capture-mesos-state"></dd></div>
           </dl>
           <p id="screen-review" hidden></p>
-          <button id="screen-apply" class="secondary" type="button" hidden>Usar valores en el formulario</button>
           <dl id="screen-live" class="screen-live" hidden>
             <div><dt>EXP actual</dt><dd><span id="screen-exp"></span><small id="screen-exp-time"></small></dd></div>
             <div><dt>Saldo de mesos</dt><dd><span id="screen-mesos"></span><small id="screen-mesos-time"></small></dd></div>
@@ -110,13 +109,18 @@
           <div class="fields">
             <label>Perfil guardado<select id="session-profile"><option value="">Registro manual</option></select></label>
             <label>Personaje <span>opcional</span><input name="character" maxlength="60" placeholder="Nombre del personaje" autocomplete="off"></label>
+            <div class="field-row">
+              <label>Job <span>opcional</span><select name="job"><option value="">Sin especificar</option></select></label>
+              <label>Especialización <span>opcional</span><select name="specialization"><option value="">Sin especificar</option></select></label>
+            </div>
             <label>Mapa <span>opcional</span><input name="map" maxlength="100" placeholder="Dónde vas a entrenar" autocomplete="off"></label>
             <div class="field-row"><label>Nivel<input name="level" type="number" min="1" step="1" required inputmode="numeric"></label><label>EXP actual<input name="exp" type="number" min="0" step="1" required inputmode="numeric"></label></div>
             <label>Mesos actuales<input name="mesos" type="number" min="0" step="1" required inputmode="numeric"></label>
           </div>
+          <p id="start-form-feedback" class="form-hint" role="alert" hidden></p>
           <button class="full" type="submit">Iniciar sesión</button>
         </form>
-        <div id="running-info" hidden><h2 id="running-heading">Sesión en curso</h2><p>Puedes volver al juego. Al finalizar, introduce tus valores finales para calcular el rendimiento.</p><dl id="initial-values"></dl></div>
+        <div id="running-info" hidden><h2 id="running-heading">Sesión en curso</h2><p>Al finalizar, el tracker completa los valores disponibles de la ventana compartida.</p><dl id="initial-values"></dl></div>
         <form id="finish-form" hidden>
           <h2>Al terminar</h2>
           <button class="secondary image-import" type="button" data-ocr-form="finish-form">Leer valores de una imagen</button>
@@ -132,6 +136,7 @@
               <label>Mesos enviados a banco u otros personajes<input name="withdrawals" type="number" min="0" step="1" value="0" inputmode="numeric"></label>
             </details>
           </div>
+          <p id="finish-form-feedback" class="form-hint" role="alert" hidden></p>
           <button class="full" type="submit">Calcular y guardar</button>
           <button id="continue" class="text-button full" type="button">Volver a la sesión en pausa</button>
         </form>
@@ -185,6 +190,6 @@
       <button id="ocr-apply" type="submit" disabled>Aplicar datos revisados</button>
     </form>
   </dialog>
-  <footer>MSproject tracker <span>v0.7.6 · Proyecto de fans independiente</span></footer>
+  <footer>MSproject tracker <span>v0.8.0 · Proyecto de fans independiente</span></footer>
 </body>
 </html>

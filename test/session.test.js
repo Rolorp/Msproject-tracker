@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSession, finishSession, recordLiveProgress } from '../dist/session.js';
+import { createSession, activeMilliseconds, pauseSession, resumeSession, stopSession, finishSession, recordLiveProgress, freshFinishReading } from '../dist/session.js';
 
 const initial = { character: 'Mapler', map: 'Mapa de prueba', level: 30, exp: 200, mesos: 1000 };
 const final = { level: 30, exp: 800, mesos: 2500 };
@@ -82,6 +82,23 @@ test('conserva pérdidas reales de EXP y mesos', () => {
   const result = finishSession(stopSession(start(), 3_601_000), { ...final, exp: 100, mesos: 500 });
   assert.equal(result.expGained, -100);
   assert.equal(result.netMesos, -500);
+});
+
+test('reutiliza la lectura final completa hasta dos segundos después de capturarla', () => {
+  const reading = { values: { ...final, mesos: 0 }, capturedAt: 5000 };
+  assert.equal(freshFinishReading(reading, 7000), reading);
+  assert.equal(freshFinishReading(reading, 7001), null);
+  assert.equal(freshFinishReading(reading, 4999), null);
+  assert.equal(freshFinishReading({ ...reading, values: { ...final, mesos: undefined } }, 6000), null);
+  assert.equal(freshFinishReading({ ...reading, values: { ...final, level: undefined } }, 6000), null);
+});
+
+test('guarda job y especialización registrados aunque el mapa quede vacío', () => {
+  const session = createSession({ ...initial, map: '', job: 'Magician', specialization: 'Cleric' }, 1000, 'identity');
+  assert.equal(session.job, 'Magician');
+  assert.equal(session.specialization, 'Cleric');
+  assert.equal(session.map, '');
+  assert.throws(() => createSession({ ...initial, job: 'Thief', specialization: 'Cleric' }, 1000, 'invalid'));
 });
 
 test('rechaza entradas incompletas, duraciones nulas y transiciones repetidas', () => {

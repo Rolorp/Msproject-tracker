@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detectPanelRegions, resourceParts, mesosLabelRegions, hudGaugeRegions } from '../dist/ocr-panels.js';
+import { detectPanelRegions, resourceParts, mesosLabelRegions, inventoryFooterRegions, hudGaugeRegions } from '../dist/ocr-panels.js';
 
 import { panelImage } from './helpers/panel-image.js';
 
@@ -72,6 +72,21 @@ test('localiza el saldo por su etiqueta cuando no se detecta moneda o marco', ()
   assert.ok(region.x0 <= 200 && region.x1 >= 260 && region.x1 < 300);
   assert.ok(region.y0 <= 100 && region.y1 >= 115);
   assert.deepEqual(mesosLabelRegions([], 1000, 800), []);
+});
+
+test('localiza una casilla de mesos estrecha en una captura 4K sin moneda visible', () => {
+  const width = 3840, height = 2160;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const paint = (x0, x1, y0, y1, rgba) => {
+    for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) {
+      data.set(rgba, (y * width + x) * 4);
+    }
+  };
+  paint(1510, 1590, 901, 913, [250, 250, 250, 255]);
+  paint(1590, 1635, 899, 916, [112, 149, 177, 255]);
+  for (const x of [1597, 1604, 1611, 1618]) paint(x, x + 3, 902, 909, [235, 238, 240, 255]);
+  const regions = inventoryFooterRegions({ width, height, data });
+  assert.ok(regions.some(region => region.x0 < 1550 && region.x1 > 1575 && region.labelBox.x0 >= 1590));
 });
 
 test('separa una fracción por la barra diagonal y evita deducirla de una cadena de dígitos', () => {

@@ -70,7 +70,7 @@ Si un recorte falla, la lectura continúa con las otras ventanas. Cuando quedan 
 
 ## Captura de ventana en el PC
 
-En Chrome o Edge de escritorio, pulsa **Compartir ventana** y selecciona MapleStory. Con la barra inferior y el inventario visibles, pulsa **Usar valores en el formulario**, revisa nivel, EXP absoluta y saldo, y pulsa **Iniciar sesión**. **Leer valores** vuelve a tomar la lectura inicial o final.
+En Chrome o Edge de escritorio, pulsa **Compartir ventana** y selecciona MapleStory. Con la barra inferior y el inventario visibles, se rellenan el nivel, la EXP y el saldo detectados. El lector también busca el nombre, job y especialización del personaje. Abre el minimapa superior izquierdo para añadir la ubicación si quieres registrarla. **Leer valores** actualiza los datos detectados. Si falta un dato requerido al pulsar **Iniciar sesión**, el formulario indica cuál puedes completar manualmente.
 
 Durante la sesión se lee el número de EXP de la barra inferior cada pocos segundos. Si una lectura queda pendiente, se conserva el último número de EXP confirmado y su hora de captura. El saldo se actualiza con el inventario visible. Cada tasa se calcula con el tiempo activo hasta su lectura. La tasa de mesos en vivo refleja el cambio de saldo. Puedes ajustar transferencias y consumibles al guardar. Si subes de nivel o la barra solo muestra el porcentaje, sigue disponible el registro de EXP y requisitos manuales al finalizar.
 
@@ -78,7 +78,7 @@ En los niveles 1 a 49, la captura puede contrastar la EXP leída con el porcenta
 
 **Diagnóstico de captura** muestra por separado si la ventana entrega imagen, si se leyó la EXP de la barra inferior, y si falta el inventario o su importe no se pudo leer. **Leer ahora** vuelve a comprobar las zonas durante una sesión en curso. **Guardar fotograma** descarga como PNG la imagen exacta analizada más recientemente para poder revisarla. Si la detección falla con tu escala de interfaz, **Marcar zonas** permite señalar el número de EXP o la casilla de saldo en el fotograma. El navegador guarda las zonas por resolución de captura y **Restaurar automática** elimina el ajuste seleccionado.
 
-Al pulsar **Finalizar** se congela el cronómetro y se toma otra lectura. Abre el inventario y vuelve a pulsar **Leer valores** si algún dato quedó pendiente. Revisa la lectura, aplícala al formulario y guarda. Puedes detener la captura desde la app o el navegador. La autorización de captura se vuelve a pedir al recargar. El OCR se ejecuta en el navegador y el historial guarda los valores confirmados. El flujo de fotos está disponible en cualquier momento.
+Al pulsar **Finalizar** se congela el cronómetro. Si la última captura completa de nivel, EXP y saldo es de hace dos segundos o menos, se usan esos datos. En los demás casos se toma otra lectura con el reloj detenido. Para completar el saldo pendiente, abre el inventario y pulsa **Leer valores**, o escribe los mesos finales. Pulsa **Calcular y guardar** para registrar la sesión. Puedes detener la captura desde la app o el navegador. La autorización de captura se vuelve a pedir al recargar. El OCR se ejecuta en el navegador y el historial guarda los valores confirmados. Las fotos de sesión también rellenan los campos detectados y permiten corregirlos antes de guardar.
 
 ## Cálculos
 

@@ -1,10 +1,10 @@
-import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.7.6';
-import { recognizeCharacterImage, recognizeSelectedRegion } from './ocr-image.js?v=0.7.6';
-import { JOBS, validClass } from './jobs.js?v=0.7.6';
-import { reviewGroup } from './ocr-review.js?v=0.7.6';
-import { createOcrWorker } from './ocr-worker.js?v=0.7.6';
+import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.8.0';
+import { recognizeCharacterImage, recognizeSelectedRegion } from './ocr-image.js?v=0.8.0';
+import { JOBS, validClass } from './jobs.js?v=0.8.0';
+import { reviewGroup } from './ocr-review.js?v=0.8.0';
+import { createOcrWorker } from './ocr-worker.js?v=0.8.0';
 
-export function setupImageImport() {
+export function setupImageImport(applySessionValues) {
   const dialog = document.getElementById('ocr-dialog');
   const fileInput = document.getElementById('ocr-file');
   const cameraInput = document.getElementById('ocr-camera');
@@ -101,12 +101,14 @@ export function setupImageImport() {
   function showCandidates(result = extractValues(rawText.value)) {
     lastResult = result;
     clearReview();
+    const session = targetForm.id !== 'profile-form';
+    const conflict = session && !targetForm.hidden ? applySessionValues(result.values) : '';
     const current = Object.fromEntries(new FormData(targetForm));
     let count = 0;
     for (const field of OCR_FIELDS) {
       const key = field.key === 'name' && targetForm.id === 'start-form' ? 'character' : field.key;
       const control = targetForm.elements.namedItem(key);
-      if (!control || control.readOnly) continue;
+      if (!control || control.readOnly || control.disabled) continue;
       const group = reviewGroup(field.key, result.values, current);
       const detected = group === 'detected';
       const row = document.createElement('div');
@@ -159,16 +161,18 @@ export function setupImageImport() {
     preservedPanel.hidden = preserved.children.length === 0;
     missingPanel.open = count === 0;
     const description = count
-      ? `Se leyeron ${count} campos. Revisa los datos y desmarca los que quieras omitir antes de confirmar.`
+      ? session ? `Se leyeron ${count} campos. Puedes cerrar esta ventana o aplicar correcciones.`
+        : `Se leyeron ${count} campos. Revisa los datos y desmarca los que quieras omitir antes de confirmar.`
       : 'No se detectaron valores para este formulario. Revisa el texto o completa los campos pendientes.';
     const needsMesos = targetForm.elements.namedItem('mesos') && result.values.mesos === undefined;
-    status.textContent = [description, ...result.warnings, needsMesos ? 'Mesos pendientes: usa Leer una zona concreta para marcar el saldo del inventario y reintentar sin perder los demás datos.' : ''].join(' ');
+    status.textContent = [conflict || description, ...result.warnings, needsMesos ? 'Mesos pendientes: usa Leer una zona concreta para marcar el saldo del inventario y reintentar sin perder los demás datos.' : ''].join(' ');
     applyButton.disabled = candidates.children.length + missing.children.length + preserved.children.length === 0;
   }
 
   document.querySelectorAll('[data-ocr-form]').forEach(button => {
     button.addEventListener('click', () => {
       targetForm = document.getElementById(button.dataset.ocrForm);
+      applyButton.textContent = targetForm.id === 'profile-form' ? 'Aplicar valores' : 'Aplicar correcciones';
       rawText.value = '';
       lastResult = null;
       clearReview();
@@ -234,7 +238,7 @@ export function setupImageImport() {
       await preview.decode();
       if (selectedFile !== file) return;
       preview.hidden = false;
-      imageInfo.textContent = `Lector v0.7.6 · Foto ${preview.naturalWidth} × ${preview.naturalHeight}`;
+      imageInfo.textContent = `Lector v0.8.0 · Foto ${preview.naturalWidth} × ${preview.naturalHeight}`;
       imageInfo.hidden = false;
       regionButton.disabled = false;
       status.textContent = 'Imagen lista. Pulsa Leer imagen para extraer los valores.';
@@ -327,12 +331,12 @@ export function setupImageImport() {
     for (const row of selected) {
       const key = row.querySelector('[type="checkbox"]').name;
       const control = targetForm.elements.namedItem(key);
-      if (control.readOnly) {
+      if (control.readOnly || control.disabled) {
         status.textContent = 'El campo pertenece al perfil guardado. Edítalo desde Perfiles de personaje.';
         return;
       }
     }
-    if (targetForm.id === 'profile-form') {
+    if (targetForm.elements.job) {
       const classValue = key => {
         const row = selected.find(item => item.querySelector('[type="checkbox"]').name === key);
         if (row) return row.querySelector('select').value;

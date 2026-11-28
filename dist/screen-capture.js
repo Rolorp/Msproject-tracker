@@ -1,7 +1,7 @@
-import { recognizeSessionFrame } from './ocr-image.js?v=0.7.6';
-import { createOcrWorker } from './ocr-worker.js?v=0.7.6';
-import { recordLiveProgress } from './session.js?v=0.7.6';
-import { setupCaptureZones } from './screen-zones.js?v=0.7.6';
+import { recognizeSessionFrame } from './ocr-image.js?v=0.8.0';
+import { createOcrWorker } from './ocr-worker.js?v=0.8.0';
+import { freshFinishReading, recordLiveProgress } from './session.js?v=0.8.0';
+import { setupCaptureZones } from './screen-zones.js?v=0.8.0';
 
 const INTERVAL = 3500;
 const STALE_AFTER = 15000;
@@ -19,7 +19,6 @@ export function setupScreenCapture(getSession, applyValues) {
   const read = $('screen-read');
   const saveFrame = $('screen-save-frame');
   const markZones = $('screen-mark-zones');
-  const apply = $('screen-apply');
   const status = $('screen-status');
   let connection = null;
   let permissionRequest = null;
@@ -27,6 +26,7 @@ export function setupScreenCapture(getSession, applyValues) {
   let review = null;
   let live = {};
   let diagnosis = null;
+  let latestReading = null;
   let notice = 'Selecciona la ventana de MapleStory. Abre el inventario al tomar los valores iniciales y finales.';
   const captureZones = setupCaptureZones(() => connection?.frame, () => {
     takeReading(connection, getSession()?.status !== 'running', true);
@@ -79,7 +79,6 @@ export function setupScreenCapture(getSession, applyValues) {
     read.textContent = tracking ? 'Leer ahora' : 'Leer valores';
     saveFrame.hidden = !connection?.frame;
     markZones.hidden = !connection?.frame;
-    apply.hidden = tracking || !review || !['level', 'exp', 'mesos', 'name'].some(key => review?.values[key] !== undefined);
     $('screen-review').hidden = tracking || !review;
     $('screen-live').hidden = !tracking || (!connection && !live.exp && !live.mesos);
 
@@ -91,6 +90,9 @@ export function setupScreenCapture(getSession, applyValues) {
       const progress = values.exp === undefined ? 'EXP pendiente' : `EXP ${FORMAT.format(values.exp)}`;
       $('screen-review').textContent = [
         values.name,
+        values.job,
+        values.specialization,
+        values.map,
         values.level === undefined ? 'Nivel pendiente' : `Nv. ${values.level}`,
         progress,
         values.mesos === undefined ? 'Saldo pendiente' : `${FORMAT.format(values.mesos)} mesos`,
@@ -118,11 +120,26 @@ export function setupScreenCapture(getSession, applyValues) {
     }
   }
 
+  function applyReview(values, capturedAt, reused = false) {
+    review = { values, capturedAt };
+    const conflict = applyValues(values);
+    const finishing = getSession()?.status === 'finishing';
+    const messages = [];
+    if (finishing && values.mesos === undefined) {
+      messages.push('Para completar los mesos finales, abre el inventario y pulsa Leer valores, o escríbelos en el formulario.');
+    }
+    if (!finishing && values.map === undefined) messages.push('Abre el minimapa para leer la ubicación si quieres registrarla.');
+    const populated = ['level', 'exp', 'mesos', 'name', 'job', 'map'].some(field => values[field] !== undefined);
+    notice = conflict || [reused ? 'Valores finales rellenados con la última lectura.'
+      : populated ? 'Valores detectados en el formulario.' : 'No se detectaron valores en esta lectura.', ...messages].join(' ');
+  }
+
   function disconnect(text = 'Captura detenida.') {
     permissionRequest = null;
     const current = connection;
     connection = null;
     diagnosis = null;
+    latestReading = null;
     if (current) {
       clearTimeout(current.timer);
       current.stream.getTracks().forEach(track => track.stop());
@@ -163,7 +180,7 @@ export function setupScreenCapture(getSession, applyValues) {
 
     current.reading = true;
     current.lastVideoTime = video.currentTime;
-    if (forReview) notice = 'Leyendo los valores de la ventana…';
+    if (forReview) notice = phase === 'finishing' ? 'Leyendo valores finales con el cronómetro detenido…' : 'Leyendo los valores de la ventana…';
     refresh();
     const capturedAt = Date.now();
     let timeout;
@@ -203,37 +220,37 @@ export function setupScreenCapture(getSession, applyValues) {
       const searchInventory = forReview || force || capturedAt - (current.lastInventorySearch ?? 0) >= INVENTORY_RETRY;
       if (searchInventory) current.lastInventorySearch = capturedAt;
       const worker = current.worker;
-      let hudReading;
+      let partialReading;
       let expired = false;
       let values;
       try {
         values = await Promise.race([
           recognizeSessionFrame(worker, frame, () => expired || !currentPhase(), forReview, searchInventory,
-            captureZones.forFrame(frame, canvas.captureResolution), reading => { hudReading = reading; }),
+            captureZones.forFrame(frame, canvas.captureResolution), reading => { partialReading = reading; }),
           new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('Tiempo de lectura agotado')), 20000); })
         ]);
       } catch (error) {
         expired = true;
-        if (!hudReading) throw error;
-        // Preserve a valid HUD reading when the secondary inventory search stalls.
+        if (!partialReading) throw error;
+        // Preserve available values when the secondary inventory search stalls.
         if (current.worker === worker) {
           current.worker = null;
           worker.terminate();
         }
-        values = hudReading;
+        values = partialReading;
       }
       if (!currentPhase() || !values) return;
       diagnosis = { ...values, capturedAt };
       if (forReview) {
-        review = { values, capturedAt };
-        const needs = [];
-        if (values.exp === undefined) needs.push('Número de EXP pendiente. Deja visible la barra inferior o pulsa Marcar zonas.');
-        if (values.mesos === undefined) needs.push(values.inventory === 'pending'
-          ? 'El saldo sigue pendiente. Puedes aplicar la EXP y volver a leer.'
-          : 'Abre el inventario para leer el saldo.');
-        notice = needs.join(' ') || 'Revisa los valores y aplícalos al formulario.';
+        if (values.name) current.characterName = values.name;
+        applyReview(values, capturedAt);
       } else {
+        const previousExp = live.exp;
         live = recordLiveProgress(live, values, session, capturedAt);
+        latestReading = {
+          capturedAt,
+          values: { ...values, name: current.characterName, exp: live.exp !== previousExp ? values.exp : undefined }
+        };
         notice = values.exp !== undefined
           ? 'Leyendo el progreso de la sesión.'
           : 'Número de EXP pendiente. Mantén visible la parte inferior del juego.';
@@ -243,7 +260,9 @@ export function setupScreenCapture(getSession, applyValues) {
         current.worker.terminate();
         current.worker = null;
       }
-      if (currentPhase()) notice = 'No se pudo leer la ventana. Puedes reintentar o usar una foto.';
+      if (currentPhase()) notice = phase === 'finishing'
+        ? 'No se completó la lectura final. Abre el inventario y pulsa Leer valores, o escribe los datos finales.'
+        : 'No se pudo leer la ventana. Puedes reintentar o usar una foto.';
     } finally {
       clearTimeout(timeout);
       current.reading = false;
@@ -319,10 +338,6 @@ export function setupScreenCapture(getSession, applyValues) {
     }, 'image/png');
   });
   read.addEventListener('click', () => takeReading(connection, getSession()?.status !== 'running', true));
-  apply.addEventListener('click', () => {
-    if (review) notice = applyValues(review.values);
-    refresh();
-  });
   window.addEventListener('pagehide', () => disconnect());
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && getSession()?.status === 'running') takeReading(connection, false, true);
@@ -339,22 +354,29 @@ export function setupScreenCapture(getSession, applyValues) {
         review = null;
         live = {};
         diagnosis = null;
+        latestReading = null;
         if (previous) {
           disconnect(session ? 'La sesión cambió. Comparte la ventana para continuar la lectura.' : 'Captura detenida al guardar la sesión.');
           return;
         }
       }
-      if (session?.status !== previous?.status && connection) {
-        clearTimeout(connection.timer);
+      if (session?.status !== previous?.status) {
+        if (connection) clearTimeout(connection.timer);
+        review = null;
         if (session?.status === 'running') {
-          review = null;
-          notice = 'Esperando una lectura de la barra de EXP.';
-          takeReading(connection);
+          if (connection) {
+            notice = 'Esperando una lectura de la barra de EXP.';
+            takeReading(connection);
+          }
         } else if (session?.status === 'finishing') {
-          review = null;
-          takeReading(connection, true);
-        } else {
-          review = null;
+          const recent = freshFinishReading(latestReading, session.endedAt);
+          if (recent) applyReview(recent.values, recent.capturedAt, true);
+          else if (connection?.ready) {
+            notice = 'Leyendo valores finales con el cronómetro detenido…';
+            takeReading(connection, true);
+          } else notice = 'Completa los valores finales o comparte la ventana con el inventario abierto.';
+        } else if (connection && session?.status === 'paused') {
+          if (previous?.status === 'finishing') latestReading = null;
           connection.reviewQueued = false;
           notice = 'La sesión está en pausa.';
         }
