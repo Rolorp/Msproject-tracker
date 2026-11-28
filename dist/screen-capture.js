@@ -1,7 +1,7 @@
-import { recognizeSessionFrame } from './ocr-image.js?v=0.7.4';
-import { createOcrWorker } from './ocr-worker.js?v=0.7.4';
-import { recordLiveProgress } from './session.js?v=0.7.4';
-import { setupCaptureZones } from './screen-zones.js?v=0.7.4';
+import { recognizeSessionFrame } from './ocr-image.js?v=0.7.5';
+import { createOcrWorker } from './ocr-worker.js?v=0.7.5';
+import { recordLiveProgress } from './session.js?v=0.7.5';
+import { setupCaptureZones } from './screen-zones.js?v=0.7.5';
 
 const INTERVAL = 3500;
 const STALE_AFTER = 15000;
@@ -46,6 +46,7 @@ export function setupScreenCapture(getSession, applyValues) {
       : 'Número de EXP pendiente · comprueba la barra o pulsa Marcar zonas';
     const mesosText = diagnosis?.inventory === 'read'
       ? `Saldo leído hace ${age(diagnosis)} s`
+      : diagnosis?.inventory === 'pending' ? 'Saldo pendiente · tiempo de lectura agotado'
       : diagnosis?.inventory === 'unreadable'
         ? 'Inventario detectado · saldo ilegible'
         : 'Pendiente · abre el inventario';
@@ -201,18 +202,35 @@ export function setupScreenCapture(getSession, applyValues) {
       }
       const searchInventory = forReview || force || capturedAt - (current.lastInventorySearch ?? 0) >= INVENTORY_RETRY;
       if (searchInventory) current.lastInventorySearch = capturedAt;
-      const values = await Promise.race([
-        recognizeSessionFrame(current.worker, frame, () => !currentPhase(), forReview, searchInventory,
-          captureZones.forFrame(frame, canvas.captureResolution)),
-        new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('Tiempo de lectura agotado')), 20000); })
-      ]);
+      const worker = current.worker;
+      let hudReading;
+      let expired = false;
+      let values;
+      try {
+        values = await Promise.race([
+          recognizeSessionFrame(worker, frame, () => expired || !currentPhase(), forReview, searchInventory,
+            captureZones.forFrame(frame, canvas.captureResolution), reading => { hudReading = reading; }),
+          new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('Tiempo de lectura agotado')), 20000); })
+        ]);
+      } catch (error) {
+        expired = true;
+        if (!hudReading) throw error;
+        // Preserve a valid HUD reading when the secondary inventory search stalls.
+        if (current.worker === worker) {
+          current.worker = null;
+          worker.terminate();
+        }
+        values = hudReading;
+      }
       if (!currentPhase() || !values) return;
       diagnosis = { ...values, capturedAt };
       if (forReview) {
         review = { values, capturedAt };
         const needs = [];
         if (values.exp === undefined) needs.push('Número de EXP pendiente. Deja visible la barra inferior o pulsa Marcar zonas.');
-        if (values.mesos === undefined) needs.push('Abre el inventario para leer el saldo.');
+        if (values.mesos === undefined) needs.push(values.inventory === 'pending'
+          ? 'El saldo sigue pendiente. Puedes aplicar la EXP y volver a leer.'
+          : 'Abre el inventario para leer el saldo.');
         notice = needs.join(' ') || 'Revisa los valores y aplícalos al formulario.';
       } else {
         live = recordLiveProgress(live, values, session, capturedAt);

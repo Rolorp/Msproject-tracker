@@ -37,10 +37,14 @@ test('lee la EXP de la barra aunque HP y MP queden tapados', async () => {
     recognize: async () => ({ data: { text: 'EXP 206,845 (44.16%)', blocks: [{ paragraphs: [{ lines: [{ words }] }] }] } })
   };
   try {
-    const result = await recognizeSessionFrame(worker, source, () => false, false, false);
+    let hudReading;
+    const result = await recognizeSessionFrame(worker, source, () => false, false, false, {},
+      reading => { hudReading = reading; });
     assert.equal(result.exp, 206845);
     assert.equal(result.expSource, 'hud');
     assert.equal(result.inventory, 'missing');
+    assert.equal(hudReading.exp, result.exp);
+    assert.equal(hudReading.inventory, 'pending');
   } finally {
     if (previous === undefined) delete globalThis.document;
     else globalThis.document = previous;
@@ -90,21 +94,28 @@ test('continúa buscando la cifra de EXP cuando la zona marcada solo devuelve un
     assert.equal(result.exp, 85921);
     assert.equal(result.expPercent, undefined);
     assert.equal(result.expMarked, undefined);
-    let mode, scanned = false;
-    worker.setParameters = async parameters => { mode = parameters.tessedit_pageseg_mode; };
+    let parameters, scanned = false, faintDigits = false;
+    worker.setParameters = async assignment => { parameters = assignment; };
     worker.recognize = async () => {
-      if (mode !== '11') return { data: { text: scanned ? 'EXP. 13592' : 'EXP [35.92%]', blocks: [] } };
+      if (parameters.tessedit_pageseg_mode !== '11') {
+        const digitsOnly = parameters.tessedit_char_whitelist === '0123456789., ';
+        return { data: { text: digitsOnly && faintDigits ? '85.921' : scanned ? 'EXP. 13592' : 'EXP [35.92%]', blocks: [] } };
+      }
       scanned = true;
       const words = [
         { text: 'HP', bbox: { x0: 990, x1: 1030, y0: 175, y1: 199 } },
         { text: 'EXP.', bbox: { x0: 1320, x1: 1370, y0: 175, y1: 199 } },
-        { text: '(35.92', bbox: { x0: 1377, x1: 1470, y0: 175, y1: 199 } }
+        { text: '(35.92', bbox: { x0: 1450, x1: 1545, y0: 175, y1: 199 } }
       ];
       return { data: { blocks: [{ paragraphs: [{ lines: [{ words }] }] }] } };
     };
     const pending = await recognizeSessionFrame(worker, source, () => false, false, false, zones);
     assert.equal(pending.exp, undefined);
     assert.equal(pending.expSource, null);
+    scanned = false;
+    faintDigits = true;
+    const fromDigits = await recognizeSessionFrame(worker, source, () => false, false, false, zones);
+    assert.equal(fromDigits.exp, 85921);
   } finally {
     if (previous === undefined) delete globalThis.document;
     else globalThis.document = previous;
@@ -124,10 +135,13 @@ test('usa los corchetes verdes del HUD para leer el importe aunque falle la lín
   for (const x of [746, 790]) paint(x, x + 1, 694, 702, [130, 190, 85, 255]);
   const previous = globalThis.document;
   globalThis.document = { createElement: () => new PixelCanvas() };
+  let isolatedCropFails = false;
   const worker = {
     setParameters: async () => {},
     recognize: async canvas => ({ data: {
-      text: canvas.height !== 112 ? '' : canvas.width < 650 ? 'EXP. 85.921' : 'EXP [35.92%]',
+      text: canvas.height !== 112 ? '' : canvas.width < 650
+        ? (isolatedCropFails ? 'EXP.' : '85.921')
+        : (isolatedCropFails ? 'EXP. 85.921 [16.83%]' : 'EXP [35.92%]'),
       blocks: []
     } })
   };
@@ -135,6 +149,10 @@ test('usa los corchetes verdes del HUD para leer el importe aunque falle la lín
     const result = await recognizeSessionFrame(worker, source, () => false, false, false);
     assert.equal(result.exp, 85921);
     assert.equal(result.expSource, 'hud');
+    isolatedCropFails = true;
+    const recovered = await recognizeSessionFrame(worker, source, () => false, false, false);
+    assert.equal(recovered.exp, 85921);
+    assert.equal(recovered.expSource, 'hud');
   } finally {
     if (previous === undefined) delete globalThis.document;
     else globalThis.document = previous;

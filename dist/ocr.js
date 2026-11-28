@@ -1,8 +1,8 @@
-import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.7.4';
-import { recognizeCharacterImage, recognizeSelectedRegion } from './ocr-image.js?v=0.7.4';
-import { JOBS, validClass } from './jobs.js?v=0.7.4';
-import { reviewGroup } from './ocr-review.js?v=0.7.4';
-import { createOcrWorker } from './ocr-worker.js?v=0.7.4';
+import { extractValues, OCR_FIELDS } from './ocr-parser.js?v=0.7.5';
+import { recognizeCharacterImage, recognizeSelectedRegion } from './ocr-image.js?v=0.7.5';
+import { JOBS, validClass } from './jobs.js?v=0.7.5';
+import { reviewGroup } from './ocr-review.js?v=0.7.5';
+import { createOcrWorker } from './ocr-worker.js?v=0.7.5';
 
 export function setupImageImport() {
   const dialog = document.getElementById('ocr-dialog');
@@ -234,7 +234,7 @@ export function setupImageImport() {
       await preview.decode();
       if (selectedFile !== file) return;
       preview.hidden = false;
-      imageInfo.textContent = `Lector v0.7.4 · Foto ${preview.naturalWidth} × ${preview.naturalHeight}`;
+      imageInfo.textContent = `Lector v0.7.5 · Foto ${preview.naturalWidth} × ${preview.naturalHeight}`;
       imageInfo.hidden = false;
       regionButton.disabled = false;
       status.textContent = 'Imagen lista. Pulsa Leer imagen para extraer los valores.';
