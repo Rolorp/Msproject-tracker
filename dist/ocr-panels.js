@@ -270,20 +270,22 @@ export function hudGaugeRegions({ data, width, height }) {
     const r = data[offset], g = data[offset + 1], b = data[offset + 2];
     if (r > 120 && r > g * 1.65 && r > b * 1.65) return 1;
     if (b > 115 && b > r * 1.6 && b > g * 1.22) return 2;
+    if (r > 115 && g > 125 && b < Math.min(r, g) * .58 && r > g * .72 && g > r * .78) return 3;
     return 0;
   };
   const minRun = Math.max(5, Math.round(width * .003));
   const start = Math.round(height * .87);
   for (let y = height - 2; y > start; y -= 2) {
-    const red = [], blue = [];
+    const runs = [[], [], [], []];
     let kind = 0, left = 0;
     for (let x = 0; x <= width; x += 1) {
       const next = x === width ? 0 : tone(x, y);
       if (next === kind) continue;
-      if (kind && x - left >= minRun) (kind === 1 ? red : blue).push({ x: left, width: x - left });
+      if (kind && x - left >= minRun) runs[kind].push({ x: left, width: x - left });
       kind = next;
       left = x;
     }
+    const [, red, blue, yellow] = runs;
     for (const hp of red) for (const mp of blue) {
       const gap = mp.x - hp.x;
       if (gap < Math.max(38, width * .016) || gap > width * .19 || hp.width > gap * 1.06 || mp.width > gap * 1.16 ||
@@ -297,7 +299,10 @@ export function hudGaugeRegions({ data, width, height }) {
       const hpTop = firstRow(hp, 1), mpTop = firstRow(mp, 2);
       if (Math.abs(hpTop - mpTop) > gap * .033 || y - Math.max(hpTop, mpTop) < gap * .035) continue;
       const top = Math.min(hpTop, mpTop);
+      const fill = yellow.find(run => run.x >= mp.x + gap * .95 && run.x <= mp.x + gap * 1.13 &&
+        run.width >= gap * .07 && run.width <= gap * 1.13 && firstRow(run, 3) >= top - gap * .035);
       return {
+        fillPercent: fill && Math.min(100, fill.width * 100 / (gap * 1.06)),
         exp: { x0: Math.max(0, mp.x + gap * .94), x1: Math.min(width, mp.x + gap * 2.08),
           y0: Math.max(0, top - gap * .145), y1: top - gap * .025 },
         level: { x0: Math.max(0, hp.x - gap * 2.12), x1: Math.max(0, hp.x - gap * .72),

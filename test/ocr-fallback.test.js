@@ -159,6 +159,48 @@ test('usa los corchetes verdes del HUD para leer el importe aunque falle la lín
   }
 });
 
+test('vuelve a leer la EXP de 1440p si el importe no coincide con el nivel y el porcentaje', async () => {
+  const width = 2560, height = 1440;
+  const source = { width, height, data: new Uint8ClampedArray(width * height * 4).fill(255) };
+  const paint = (x, y, w, h, color) => {
+    for (let row = y; row < y + h; row += 1) for (let column = x; column < x + w; column += 1) {
+      source.data.set(color, (row * width + column) * 4);
+    }
+  };
+  paint(930, 1412, 206, 22, [210, 10, 10, 255]);
+  paint(1150, 1412, 206, 22, [10, 84, 210, 255]);
+  paint(1370, 1412, 38, 22, [195, 201, 2, 255]);
+  paint(676, 1401, 19, 23, [240, 130, 27, 255]);
+  paint(702, 1401, 19, 23, [240, 130, 27, 255]);
+  const previous = globalThis.document;
+  globalThis.document = { createElement: () => new PixelCanvas() };
+  let whitelist, output, retry;
+  const worker = {
+    setParameters: async parameters => { whitelist = parameters.tessedit_char_whitelist; },
+    recognize: async canvas => {
+      if (whitelist === '0123456789') return { data: { text: '46', confidence: 85 } };
+      if (whitelist === 'EXP0123456789.,()%[] ') return { data: { text: canvas.height === 70 ? retry : output } };
+      return { data: { text: '', blocks: [] } };
+    }
+  };
+  try {
+    for (const [wrong, correct, percent] of [['8.921', '85.921', '16.83'], ['26.154', '86.154', '16.88']]) {
+      output = `EXP. ${wrong} [${percent}%]`;
+      retry = `EXP. ${correct}1${percent}%`;
+      const recovered = await recognizeSessionFrame(worker, source, () => false, false, false);
+      assert.equal(recovered.level, 46);
+      assert.equal(recovered.exp, Number(correct.replace('.', '')));
+    }
+    retry = output;
+    const pending = await recognizeSessionFrame(worker, source, () => false, false, false);
+    assert.equal(pending.exp, undefined);
+    assert.equal(pending.expSource, null);
+  } finally {
+    if (previous === undefined) delete globalThis.document;
+    else globalThis.document = previous;
+  }
+});
+
 test('recupera todos los campos generales aunque haya ventanas detectadas y fallen los recortes', async () => {
   const image = panelImage();
   image.naturalWidth = image.width;

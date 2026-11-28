@@ -1,5 +1,5 @@
-import { CHARACTER_FIELDS } from './character-fields.js?v=0.7.5';
-import { parseOcrClass, validClass } from './jobs.js?v=0.7.5';
+import { CHARACTER_FIELDS } from './character-fields.js?v=0.7.6';
+import { parseOcrClass, validClass } from './jobs.js?v=0.7.6';
 
 export const OCR_FIELDS = CHARACTER_FIELDS;
 
@@ -69,6 +69,16 @@ export function parseHudExp(text) {
     exp: exp !== null && exp >= 0 ? exp : undefined,
     expPercent: percent >= 0 && percent <= 100 ? percent : undefined
   };
+}
+
+// On scaled HUDs the opening bracket sometimes joins the two numbers as "1".
+// A complete thousands group lets us keep all of the digits on its left.
+export function parseJoinedHudExp(text) {
+  const compact = String(text).trim().match(/^EXP[.: ]*(\d{1,3}([.,])\d{3}(?:\2\d{3})*)[1|]?(\d{1,3}[.,]\d{2})\s*%[\])]?$/i);
+  if (!compact) return null;
+  const exp = parseInteger(compact[1]);
+  const expPercent = Number(compact[3].replace(',', '.'));
+  return exp !== null && expPercent <= 100 ? { exp, expPercent } : null;
 }
 
 export function layoutText(blocks) {

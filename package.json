@@ -1,6 +1,6 @@
 {
   "name": "msproject-tracker",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "private": true,
   "type": "module",
   "description": "Registro de sesiones de MapleStory Classic World",

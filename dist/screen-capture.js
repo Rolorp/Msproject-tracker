@@ -1,7 +1,7 @@
-import { recognizeSessionFrame } from './ocr-image.js?v=0.7.5';
-import { createOcrWorker } from './ocr-worker.js?v=0.7.5';
-import { recordLiveProgress } from './session.js?v=0.7.5';
-import { setupCaptureZones } from './screen-zones.js?v=0.7.5';
+import { recognizeSessionFrame } from './ocr-image.js?v=0.7.6';
+import { createOcrWorker } from './ocr-worker.js?v=0.7.6';
+import { recordLiveProgress } from './session.js?v=0.7.6';
+import { setupCaptureZones } from './screen-zones.js?v=0.7.6';
 
 const INTERVAL = 3500;
 const STALE_AFTER = 15000;
