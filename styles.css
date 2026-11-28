@@ -221,6 +221,29 @@ p {
   gap:.5rem;
 }
 
+#screen-zone-dialog {
+  width:min(96vw,1150px);
+}
+
+.screen-zone-preview {
+  position:relative;
+  margin:1rem 0;
+}
+
+#screen-zone-image {
+  display:block;
+  width:100%;
+  height:auto;
+  cursor:crosshair;
+}
+
+#screen-zone-box {
+  position:absolute;
+  border:2px solid var(--accent);
+  background:#b9f88733;
+  pointer-events:none;
+}
+
 .screen-diagnostics {
   display:grid;
   gap:.35rem;

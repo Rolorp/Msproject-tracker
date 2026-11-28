@@ -1,5 +1,5 @@
-import { CHARACTER_FIELDS } from './character-fields.js?v=0.7.2';
-import { parseOcrClass, validClass } from './jobs.js?v=0.7.2';
+import { CHARACTER_FIELDS } from './character-fields.js?v=0.7.3';
+import { parseOcrClass, validClass } from './jobs.js?v=0.7.3';
 
 export const OCR_FIELDS = CHARACTER_FIELDS;
 
@@ -50,6 +50,24 @@ function readNumber(segment) {
 function readPercent(segment) {
   const match = segment.match(/^\s*(\d+(?:[.,]\d+)?)\s*%/);
   return match ? Number(match[1].replace(',', '.')) : null;
+}
+
+// A crop of the HUD can lose the EXP label or one of the square brackets.
+// Keep the whole-line grammar so unrelated HP, MP and chat values stay out.
+export function parseHudExp(text) {
+  const cleaned = String(text).normalize('NFKC').trim().replace(/[\[\{]/g, '(').replace(/[\]\}]/g, ')').replace(/\s+/g, ' ');
+  const prefix = cleaned.match(/^EXP(?=[. :()\d]|$)[.: ]*/i);
+  const raw = cleaned.slice(prefix?.[0].length ?? 0);
+  const pair = raw.match(/^(\d[\d., ]*?)(?:\s*\(\s*|\s+)(\d{1,3}(?:[.,]\d+)?)\s*%\s*\)?$/);
+  const percentOnly = !pair && raw.match(/^\(?\s*(\d{1,3}(?:[.,]\d+)?)\s*%\s*\)?$/);
+  const exp = percentOnly ? null : parseInteger(pair ? pair[1] : raw);
+  const percentText = pair?.[2] ?? percentOnly?.[1];
+  const percent = percentText === undefined ? NaN : Number(percentText.replace(',', '.'));
+  return {
+    labeled: !!prefix,
+    exp: exp !== null && exp >= 0 ? exp : undefined,
+    expPercent: percent >= 0 && percent <= 100 ? percent : undefined
+  };
 }
 
 export function layoutText(blocks) {
