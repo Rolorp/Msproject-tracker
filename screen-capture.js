@@ -1,7 +1,7 @@
-import { recognizeSessionFrame } from './ocr-image.js?v=0.7.3';
-import { createOcrWorker } from './ocr-worker.js?v=0.7.3';
-import { recordLiveProgress } from './session.js?v=0.7.3';
-import { setupCaptureZones } from './screen-zones.js?v=0.7.3';
+import { recognizeSessionFrame } from './ocr-image.js?v=0.7.4';
+import { createOcrWorker } from './ocr-worker.js?v=0.7.4';
+import { recordLiveProgress } from './session.js?v=0.7.4';
+import { setupCaptureZones } from './screen-zones.js?v=0.7.4';
 
 const INTERVAL = 3500;
 const STALE_AFTER = 15000;
@@ -41,10 +41,9 @@ export function setupScreenCapture(getSession, applyValues) {
   function renderDiagnostics(tracking) {
     const age = reading => Math.max(0, Math.floor((Date.now() - reading.capturedAt) / 1000));
     const detectedExp = diagnosis?.expSource;
-    const absolute = diagnosis?.exp !== undefined;
     const expText = detectedExp
-      ? `Barra inferior${diagnosis.expMarked ? ' · zona marcada' : ''} · ${absolute ? 'EXP leída' : 'Solo porcentaje'} hace ${age(diagnosis)} s`
-      : 'Pendiente · comprueba la barra o pulsa Marcar zonas';
+      ? `Barra inferior${diagnosis.expMarked ? ' · zona marcada' : ''} · EXP leída hace ${age(diagnosis)} s`
+      : 'Número de EXP pendiente · comprueba la barra o pulsa Marcar zonas';
     const mesosText = diagnosis?.inventory === 'read'
       ? `Saldo leído hace ${age(diagnosis)} s`
       : diagnosis?.inventory === 'unreadable'
@@ -88,9 +87,7 @@ export function setupScreenCapture(getSession, applyValues) {
 
     if (!tracking && review) {
       const { values, capturedAt } = review;
-      const progress = values.exp === undefined
-        ? (values.expPercent === undefined ? 'EXP pendiente' : `EXP ${FORMAT.format(values.expPercent)} %`)
-        : `EXP ${FORMAT.format(values.exp)}`;
+      const progress = values.exp === undefined ? 'EXP pendiente' : `EXP ${FORMAT.format(values.exp)}`;
       $('screen-review').textContent = [
         values.name,
         values.level === undefined ? 'Nivel pendiente' : `Nv. ${values.level}`,
@@ -104,8 +101,7 @@ export function setupScreenCapture(getSession, applyValues) {
       const mesos = live.mesos;
       $('screen-exp').textContent = exp ? [
         exp.level ? `Nv. ${exp.level}` : 'Nivel sin confirmar',
-        exp.value === null ? null : FORMAT.format(exp.value),
-        exp.percent === null ? null : `${FORMAT.format(exp.percent)} %`,
+        FORMAT.format(exp.value),
         exp.rate === null ? null : `${FORMAT.format(exp.rate)} EXP/h`
       ].filter(Boolean).join(' · ') : 'Pendiente';
       $('screen-exp-time').textContent = [
@@ -215,16 +211,14 @@ export function setupScreenCapture(getSession, applyValues) {
       if (forReview) {
         review = { values, capturedAt };
         const needs = [];
-        if (values.exp === undefined) needs.push(values.expPercent === undefined
-          ? 'EXP pendiente. Deja visible la barra inferior o pulsa Marcar zonas.'
-          : 'La barra muestra el porcentaje. Completa la EXP absoluta si la conoces.');
+        if (values.exp === undefined) needs.push('Número de EXP pendiente. Deja visible la barra inferior o pulsa Marcar zonas.');
         if (values.mesos === undefined) needs.push('Abre el inventario para leer el saldo.');
         notice = needs.join(' ') || 'Revisa los valores y aplícalos al formulario.';
       } else {
         live = recordLiveProgress(live, values, session, capturedAt);
-        notice = values.exp !== undefined || values.expPercent !== undefined
+        notice = values.exp !== undefined
           ? 'Leyendo el progreso de la sesión.'
-          : 'Barra de EXP pendiente. Mantén visible la parte inferior del juego.';
+          : 'Número de EXP pendiente. Mantén visible la parte inferior del juego.';
       }
     } catch {
       if (connection === current && current.worker) {

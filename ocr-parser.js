@@ -1,5 +1,5 @@
-import { CHARACTER_FIELDS } from './character-fields.js?v=0.7.3';
-import { parseOcrClass, validClass } from './jobs.js?v=0.7.3';
+import { CHARACTER_FIELDS } from './character-fields.js?v=0.7.4';
+import { parseOcrClass, validClass } from './jobs.js?v=0.7.4';
 
 export const OCR_FIELDS = CHARACTER_FIELDS;
 
@@ -60,7 +60,8 @@ export function parseHudExp(text) {
   const raw = cleaned.slice(prefix?.[0].length ?? 0);
   const pair = raw.match(/^(\d[\d., ]*?)(?:\s*\(\s*|\s+)(\d{1,3}(?:[.,]\d+)?)\s*%\s*\)?$/);
   const percentOnly = !pair && raw.match(/^\(?\s*(\d{1,3}(?:[.,]\d+)?)\s*%\s*\)?$/);
-  const exp = percentOnly ? null : parseInteger(pair ? pair[1] : raw);
+  // The opening bracket separates the amount even if OCR garbles the percentage.
+  const exp = percentOnly ? null : parseInteger(pair ? pair[1] : raw.split('(', 1)[0]);
   const percentText = pair?.[2] ?? percentOnly?.[1];
   const percent = percentText === undefined ? NaN : Number(percentText.replace(',', '.'));
   return {

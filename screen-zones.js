@@ -40,7 +40,7 @@ export function setupCaptureZones(getFrame, reread) {
     image.height = frame.height - top;
     image.getContext('2d').drawImage(frame, 0, top, image.width, image.height, 0, 0, image.width, image.height);
     $('screen-zone-hint').textContent = kind.value === 'exp'
-      ? 'Marca dos esquinas alrededor del texto de EXP y su porcentaje en la barra inferior.'
+      ? 'Marca dos esquinas alrededor del número de EXP en la barra inferior. Puedes incluir la etiqueta EXP.'
       : 'Marca dos esquinas que encierren la casilla blanca completa del saldo. El inventario debe estar abierto.';
     anchor = selection = null;
     marker.hidden = true;
